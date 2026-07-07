@@ -1,0 +1,7 @@
+{
+  "name": "b64-dropper",
+  "version": "1.0.0",
+  "description": "Base64 configuration parser",
+  "main": "index.js",
+  "license": "MIT"
+}

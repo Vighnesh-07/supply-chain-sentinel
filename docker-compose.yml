@@ -1,0 +1,60 @@
+# ═══════════════════════════════════════════════════════════════
+# Supply Chain Sentinel — Docker Compose
+# ═══════════════════════════════════════════════════════════════
+# Orchestrates the vulnerable demo application and supporting
+# services for supply chain security monitoring.
+# ═══════════════════════════════════════════════════════════════
+
+version: "3.9"
+
+services:
+  # ─── Vulnerable Demo Application ─────────────────────────
+  vulnapp:
+    build:
+      context: ./app
+      dockerfile: Dockerfile
+    image: vulnapp:latest
+    container_name: vulnapp
+    ports:
+      - "8000:8000"
+    environment:
+      - APP_ENV=production
+    restart: unless-stopped
+    networks:
+      - sentinel-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.5"
+
+  # ─── Nexus Studio Application ────────────────────────────
+  nexus-studio:
+    build:
+      context: .
+      dockerfile: demo-apps/nexus-studio/Dockerfile
+    image: nexus-studio-app:latest
+    container_name: nexus-studio-app
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+    networks:
+      - sentinel-net
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.5"
+
+# ─── Networks ──────────────────────────────────────────────
+networks:
+  sentinel-net:
+    driver: bridge
+    name: sentinel-network
+    # Phase 3: Network monitoring will capture traffic on this bridge

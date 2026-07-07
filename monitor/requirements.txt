@@ -1,0 +1,21 @@
+# ═══════════════════════════════════════════════════════════════
+# Supply Chain Sentinel — Monitor Dependencies
+# ═══════════════════════════════════════════════════════════════
+# Multi-Ecosystem SBOM & Dependency Auditing
+
+# Data processing & Excel output
+pandas>=2.0.0
+openpyxl>=3.1.0
+
+# HTTP requests (OSV, GitHub Advisory, PyPI, npm, etc.)
+requests>=2.31.0
+
+# Terminal UI (tables, progress bars, panels)
+rich>=13.0.0
+
+# AST Parsing (Tree-sitter)
+tree-sitter>=0.23.0
+tree-sitter-python>=0.23.0
+tree-sitter-javascript>=0.23.0
+tree-sitter-go>=0.23.0
+tree-sitter-ruby>=0.23.0

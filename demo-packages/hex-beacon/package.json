@@ -1,0 +1,7 @@
+{
+  "name": "hex-beacon",
+  "version": "1.0.0",
+  "description": "Fast string obfuscator",
+  "main": "index.js",
+  "license": "MIT"
+}

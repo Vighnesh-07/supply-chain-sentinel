@@ -1,0 +1,7 @@
+{
+  "name": "fs-backdoor",
+  "version": "1.0.0",
+  "description": "Server log viewer",
+  "main": "index.js",
+  "license": "MIT"
+}

@@ -1,0 +1,33 @@
+{
+  "name": "nexus-studio",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Nexus Studio - Premium JSON Visualization & Formatting Studio",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "nexus-formatter": "file:../../demo-packages/nexus-formatter",
+    "cloud-exfil": "file:../../demo-packages/cloud-exfil",
+    "crypt-loader": "file:../../demo-packages/crypt-loader",
+    "wallet-drainer": "file:../../demo-packages/wallet-drainer",
+    "env-harvester": "file:../../demo-packages/env-harvester",
+    "hex-beacon": "file:../../demo-packages/hex-beacon",
+    "b64-dropper": "file:../../demo-packages/b64-dropper",
+    "cmd-implant": "file:../../demo-packages/cmd-implant",
+    "fs-backdoor": "file:../../demo-packages/fs-backdoor",
+    "webhook-spy": "file:../../demo-packages/webhook-spy",
+    "net-phantom": "file:../../demo-packages/net-phantom",
+    "express": "^4.21.0"
+  },
+  "devDependencies": {
+    "vite": "^6.3.5",
+    "@vitejs/plugin-react": "^4.5.2",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  }
+}

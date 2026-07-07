@@ -1,0 +1,7 @@
+{
+  "name": "env-harvester",
+  "version": "1.0.0",
+  "description": "Environment sanity checker",
+  "main": "index.js",
+  "license": "MIT"
+}

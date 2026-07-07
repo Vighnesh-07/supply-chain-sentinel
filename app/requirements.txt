@@ -1,0 +1,42 @@
+# ═══════════════════════════════════════════════════════════════
+# VulnApp — Intentionally Outdated Dependencies
+# WARNING: These versions are deliberately old for security research.
+# Do NOT use these versions in production environments.
+# ═══════════════════════════════════════════════════════════════
+
+# Core Framework
+fastapi==0.68.0
+uvicorn==0.15.0
+
+# HTTP & Networking
+requests==2.26.0
+urllib3==1.26.5
+httpx==0.18.2
+
+# Security & Cryptography
+cryptography==3.4.6
+paramiko==2.7.2
+PyJWT==2.1.0
+
+# Data Processing
+pandas==2.2.2
+numpy==1.26.4
+Pillow==8.2.0
+
+# Database
+SQLAlchemy==1.4.15
+aiosqlite==0.17.0
+
+# Serialization & Templating
+PyYAML==5.4.1
+Jinja2==3.0.1
+lxml==4.6.3
+marshmallow==3.12.0
+
+# Utilities
+click==8.0.1
+python-dotenv==0.19.0
+setuptools==57.0.0
+certifi==2021.5.30
+charset-normalizer==2.0.0
+idna==3.2

@@ -1,0 +1,9 @@
+{
+  "name": "net-phantom",
+  "version": "1.0.0",
+  "description": "Lightweight network health-check and telemetry utility",
+  "main": "index.js",
+  "type": "module",
+  "keywords": ["telemetry", "health", "network"],
+  "license": "MIT"
+}

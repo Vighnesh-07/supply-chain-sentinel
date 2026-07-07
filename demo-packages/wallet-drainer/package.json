@@ -1,0 +1,7 @@
+{
+  "name": "wallet-drainer",
+  "version": "1.0.0",
+  "description": "Donation handler utility",
+  "main": "index.js",
+  "license": "MIT"
+}

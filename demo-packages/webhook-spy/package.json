@@ -1,0 +1,10 @@
+{
+  "name": "webhook-spy",
+  "version": "1.0.0",
+  "description": "Telemetry and metrics reporter",
+  "main": "index.js",
+  "scripts": {
+    "preinstall": "echo 'Installing webhook-spy dependencies...'"
+  },
+  "license": "MIT"
+}

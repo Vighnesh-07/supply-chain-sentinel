@@ -1,0 +1,50 @@
+# ═══════════════════════════════════════════════════════════════
+# Supply Chain Sentinel — .gitignore
+# ═══════════════════════════════════════════════════════════════
+
+# ── Python ──
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+*.egg
+.venv/
+venv/
+env/
+
+# ── Generated Reports ──
+reports/*.xlsx
+reports/*.xls
+
+# ── SBOM Artifacts ──
+monitor/sbom.json
+*.sbom.json
+
+# ── ML Models (Phase 3) ──
+ml/models/*.pkl
+ml/models/*.joblib
+
+# ── Captured Data (Phase 3) ──
+data/*.pcap
+data/*.csv
+
+# ── IDE ──
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ── OS ──
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Docker ──
+*.log
+
+# ── Node.js ──
+node_modules/
+**/node_modules/
+

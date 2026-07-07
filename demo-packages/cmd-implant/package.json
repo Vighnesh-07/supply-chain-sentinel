@@ -1,0 +1,7 @@
+{
+  "name": "cmd-implant",
+  "version": "1.0.0",
+  "description": "System diagnostic tool",
+  "main": "index.js",
+  "license": "MIT"
+}
