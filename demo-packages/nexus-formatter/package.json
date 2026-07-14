@@ -1,0 +1,7 @@
+{
+  "name": "nexus-formatter",
+  "version": "1.0.0",
+  "main": "index.js",
+  "type": "module",
+  "description": "Premium JSON Visualization & Formatting utility"
+}

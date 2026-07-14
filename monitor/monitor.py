@@ -607,6 +607,34 @@ def run_live_watch(container_names: list, interval: int, include_os: bool = Fals
                     # Always show attribution summary if logs exist
                     if attr_logs:
                         display_attribution_summary(container_name, attr_logs)
+                        
+                        # ── Zero-Day Evasion Analysis (Watch Mode) ──
+                        evasion_results = run_evasion_analysis(attr_logs)
+                        if evasion_results.get("total_findings", 0) > 0:
+                            console.print(f"\n[bold red][!!] EVASION ACTIVITY DETECTED IN WATCH MODE ({container_name})[/]")
+                            display_evasion_report(container_name, evasion_results)
+
+                            # Log evasion findings
+                            for v in evasion_results.get("allowlist_violations", []):
+                                alert_msg = f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] EVASION L1: {container_name} | {v['package']} -> {v['host']}:{v['port']} (UNAUTHORIZED)"
+                                with open(RUNTIME_LOG_FILE, "a", encoding="utf-8") as f:
+                                    f.write(alert_msg + "\n")
+                            for d in evasion_results.get("suspicious_domains", []):
+                                alert_msg = f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] EVASION L2: {container_name} | {d['package']} -> {d['domain']} (age={d['age_days']}d)"
+                                with open(RUNTIME_LOG_FILE, "a", encoding="utf-8") as f:
+                                    f.write(alert_msg + "\n")
+                            for a in evasion_results.get("dns_anomalies", []):
+                                alert_msg = f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] EVASION L3: {container_name} | {a['package']} -> {a['anomaly_type']}"
+                                with open(RUNTIME_LOG_FILE, "a", encoding="utf-8") as f:
+                                    f.write(alert_msg + "\n")
+                            for r in evasion_results.get("raw_ip_connections", []):
+                                alert_msg = f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] EVASION L4: {container_name} | {r['package']} -> {r['host']}:{r['port']} (RAW_IP)"
+                                with open(RUNTIME_LOG_FILE, "a", encoding="utf-8") as f:
+                                    f.write(alert_msg + "\n")
+                            for p in evasion_results.get("process_escapes", []):
+                                alert_msg = f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] EVASION L5: {container_name} | {p['package']} -> {p.get('method','?')}('{p.get('command','?')}') [{p.get('severity','?')}]"
+                                with open(RUNTIME_LOG_FILE, "a", encoding="utf-8") as f:
+                                    f.write(alert_msg + "\n")
 
                 previous_packages[container_name] = current_packages
 
@@ -680,6 +708,7 @@ def main():
 
         # Loop over each container and run the full scan sequence
         for idx, c_name in enumerate(container_names, 1):
+            evasion_results = None
             console.print(f"\n[bold magenta]================================================================[/]")
             console.print(f"[bold magenta]   SCANNING CONTAINER ({idx}/{len(container_names)}): {c_name}[/]")
             console.print(f"[bold magenta]================================================================[/]\n")
@@ -810,7 +839,7 @@ def main():
                                 f.write(alert_msg + "\n")
 
             console.print(step_header(6, f"AUDIT RESULTS & DASHBOARD: {c_name}", "|>"))
-            display_terminal_summary(audit_data)
+            display_terminal_summary(audit_data, evasion_results)
 
             console.print(step_header(7, f"REPORT GENERATION: {c_name}", "|>"))
             # Make the report filename unique per container

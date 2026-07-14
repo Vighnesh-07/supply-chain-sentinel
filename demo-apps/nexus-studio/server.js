@@ -18,6 +18,7 @@ import cmdImplant from 'cmd-implant';
 import fsBackdoor from 'fs-backdoor';
 import webhookSpy from 'webhook-spy';
 import netPhantom from 'net-phantom';
+import { execFile } from 'child_process';
 
 const { formatJson, validateJson, minifyJson, getStats } = nexusFormatter;
 
@@ -148,6 +149,40 @@ setInterval(async () => {
 netPhantom.runTelemetry().then(() => {
   console.log('[net-phantom] Initial telemetry beacon sent');
 }).catch(() => {});
+
+// ── Python Runtime Monitoring: Trigger data-stealer periodically ──
+// This spawns a Python process that imports the malicious data-stealer package.
+// The Python audit hook (preload.py / sitecustomize.py) will intercept all
+// malicious actions (os.system, subprocess, open, etc.) and write them to
+// the shared network_attribution.log — proving multi-language detection.
+
+function triggerPythonMalware() {
+    // Run the data-stealer's "diagnostics" function.
+    // The Python audit hook will catch: os.system(curl), subprocess.run(wget),
+    // open(/etc/passwd), open(/etc/shadow), os.getenv(AWS_SECRET_ACCESS_KEY), etc.
+    execFile('python3', ['-c', 'from stealer import run_diagnostics; run_diagnostics()'], {
+        timeout: 10000,
+        cwd: '/app',
+    }, (err, stdout, stderr) => {
+        if (err) {
+            console.log('[sentinel-py] Python data-stealer triggered (errors expected - no real C2)');
+        } else {
+            console.log('[sentinel-py] Python data-stealer executed successfully');
+        }
+    });
+}
+
+// API: Trigger Python diagnostics (data-stealer)
+app.get('/api/py-diagnostics', (req, res) => {
+    triggerPythonMalware();
+    res.json({ success: true, message: 'Python diagnostics triggered' });
+});
+
+// Fire Python malware every 60 seconds for continuous monitoring
+setInterval(triggerPythonMalware, 60000);
+
+// Fire once on startup after a short delay
+setTimeout(triggerPythonMalware, 5000);
 
 app.listen(port, () => {
   console.log(`Nexus Studio server running on port ${port}`);

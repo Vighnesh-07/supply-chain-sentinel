@@ -10,7 +10,7 @@ Supports multi-ecosystem grouping and multi-database threat source attribution.
 
 import os
 from datetime import datetime
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import pandas as pd
 
@@ -58,18 +58,79 @@ def _build_ecosystem_summary(audit_data: List[Dict]) -> str:
     return "  |  ".join(parts)
 
 
-def display_terminal_summary(audit_data: List[Dict]) -> None:
+def calculate_package_threat_scores(audit_data: List[Dict], evasion_results: Optional[Dict] = None) -> None:
+    """Calculate an individual 0-100 threat score for each package and determine its status."""
+    for item in audit_data:
+        score = 0
+        pkg_name = item.get("package", "")
+        
+        # 1. Vulnerability Points (CVSS * 5)
+        cvss = item.get("cvss_score", 0.0)
+        score += int(cvss * 5)
+        
+        # 2. Threat Intel Flag Points
+        if item.get("is_malicious"):
+            score += 100
+            
+        # 3. Static Artifact Points
+        score += len(item.get("ioc_ast", [])) * 15
+        score += len(item.get("ioc_entropy_secrets", [])) * 25
+        score += len(item.get("ioc_wallets", [])) * 30
+        score += len(item.get("ioc_ips", [])) * 20
+        score += len(item.get("ioc_urls", [])) * 15
+        score += len(item.get("ioc_sens", [])) * 10
+        score += len(item.get("ioc_s3", [])) * 10
+        score += len(item.get("ioc_base64", [])) * 2
+        score += len(item.get("ioc_hex", [])) * 2
+        
+        # 4. Dynamic Evasion Points (HIDS)
+        if evasion_results:
+            l1_hits = [v for v in evasion_results.get("allowlist_violations", []) if v.get("package") == pkg_name]
+            score += len(l1_hits) * 50
+            l2_hits = [d for d in evasion_results.get("suspicious_domains", []) if d.get("package") == pkg_name]
+            score += len(l2_hits) * 40
+            l3_hits = [a for a in evasion_results.get("dns_anomalies", []) if a.get("package") == pkg_name]
+            score += len(l3_hits) * 60
+            l4_hits = [r for r in evasion_results.get("raw_ip_connections", []) if r.get("package") == pkg_name]
+            score += len(l4_hits) * 40
+            l5_hits = [e for e in evasion_results.get("process_escapes", []) if e.get("package") == pkg_name]
+            for escape in l5_hits:
+                if escape.get("severity", "LOW") in ("CRITICAL", "HIGH"):
+                    score += 80
+                else:
+                    score += 20
+                    
+        # Cap score between 1 and 100 for display
+        final_score = max(1, min(score, 100))
+        item["threat_score"] = final_score
+        item["raw_threat_score"] = score
+        
+        # Determine status (No blocking! Just visibility)
+        if final_score >= 50:
+            item["threat_status"] = "Malicious"
+            item["is_malicious"] = True  # Override for scorecard tracking
+        elif final_score > 1:
+            item["threat_status"] = "Suspicious"
+        else:
+            item["threat_status"] = "Clean"
+
+
+
+def display_terminal_summary(audit_data: List[Dict], evasion_results: Optional[Dict] = None) -> None:
     """
     Display audit results as a comprehensive security dashboard in the terminal.
 
     Args:
         audit_data: List of audit result dicts (now includes 'ecosystem' and 'threat_sources').
+        evasion_results: Optional dict of Zero-Day Evasion Analysis findings (Layers 1-5).
     """
     console.print("\n")
 
     # ════════════════════════════════════════════════════════════
     # SECTION 1: Full Audit Results Table
     # ════════════════════════════════════════════════════════════
+    calculate_package_threat_scores(audit_data, evasion_results)
+
     table = Table(
         show_header=True,
         header_style="bold white on dark_blue",
@@ -85,7 +146,7 @@ def display_terminal_summary(audit_data: List[Dict]) -> None:
     table.add_column("Ecosystem", style="bold magenta", justify="center", min_width=14)
     table.add_column("Installed", style="cyan", justify="center", min_width=10)
     table.add_column("Latest", justify="center", min_width=10)
-    table.add_column("Malicious", justify="center", min_width=11)
+    table.add_column("Threat Score", justify="center", min_width=15)
     table.add_column("Severity", justify="center", min_width=14)
     table.add_column("CVSS", justify="center", min_width=6)
     table.add_column("Vulns", justify="center", min_width=6)
@@ -123,13 +184,15 @@ def display_terminal_summary(audit_data: List[Dict]) -> None:
         else:
             cve_display = "[dim]--[/]"
 
-        # Malicious Flag with source attribution
-        is_mal = item.get("is_malicious", False)
-        threat_sources = item.get("threat_sources", [])
-        if is_mal:
-            mal_display = "[bold white on red] MALICIOUS [/]"
+        # Threat Score & Status
+        score = item.get("threat_score", 0)
+        status = item.get("threat_status", "Clean")
+        if status == "Malicious":
+            mal_display = f"[bold white on red] {score}/100 MALICIOUS [/]"
+        elif status == "Suspicious":
+            mal_display = f"[bold yellow] {score}/100 Suspicious [/]"
         else:
-            mal_display = "[dim green]Clean[/]"
+            mal_display = f"[dim green]{score}/100 Clean[/]"
 
         # CVSS
         cvss = item.get("cvss_score", 0.0)
@@ -194,21 +257,82 @@ def display_terminal_summary(audit_data: List[Dict]) -> None:
     vulnerable = total - clean
     total_cves = sum(len(d.get("cve_ids", [])) for d in audit_data)
 
-    # Risk Score calculation (simple weighted)
-    risk_score = (critical * 40) + (high * 20) + (medium * 5) + (low * 1) + (malicious * 100)
+    # ── Static Deep Scan Artifact (IOC) Counts ──
+    ast_findings_count = 0
+    secrets_count = 0
+    wallets_count = 0
+    ips_count = 0
+    urls_count = 0
+    cloud_assets_count = 0
+    encoded_strings_count = 0
+
+    for d in audit_data:
+        ast_findings_count += len(d.get("ioc_ast", []))
+        secrets_count += len(d.get("ioc_entropy_secrets", []))
+        wallets_count += len(d.get("ioc_wallets", []))
+        ips_count += len(d.get("ioc_ips", []))
+        urls_count += len(d.get("ioc_urls", []))
+        cloud_assets_count += len(d.get("ioc_sens", [])) + len(d.get("ioc_s3", []))
+        encoded_strings_count += len(d.get("ioc_base64", [])) + len(d.get("ioc_hex", []))
+
+    total_artifacts = ast_findings_count + secrets_count + wallets_count + ips_count + urls_count + cloud_assets_count + encoded_strings_count
+
+    artifact_points = (
+        (ast_findings_count * 15) +
+        (secrets_count * 25) +
+        (wallets_count * 30) +
+        (ips_count * 20) +
+        (urls_count * 15) +
+        (cloud_assets_count * 10) +
+        (encoded_strings_count * 2)
+    )
+
+    # ── Dynamic Evasion Analysis (HIDS) Counts ──
+    evasion_points = 0
+    evasion_count = 0
+    if evasion_results:
+        l1_count = len(evasion_results.get("allowlist_violations", []))
+        evasion_points += l1_count * 50
+        evasion_count += l1_count
+
+        l2_count = len(evasion_results.get("suspicious_domains", []))
+        evasion_points += l2_count * 40
+        evasion_count += l2_count
+
+        l3_count = len(evasion_results.get("dns_anomalies", []))
+        evasion_points += l3_count * 60
+        evasion_count += l3_count
+
+        l4_count = len(evasion_results.get("raw_ip_connections", []))
+        evasion_points += l4_count * 40
+        evasion_count += l4_count
+
+        l5_escapes = evasion_results.get("process_escapes", [])
+        for escape in l5_escapes:
+            severity = escape.get("severity", "LOW")
+            if severity in ("CRITICAL", "HIGH"):
+                evasion_points += 80
+            else:
+                evasion_points += 20
+        evasion_count += len(l5_escapes)
+
+    # ── Combined Weighted Risk Score ──
+    vuln_points = (critical * 40) + (high * 20) + (medium * 5) + (low * 1) + (malicious * 100)
+    risk_score = vuln_points + artifact_points + evasion_points
+
     if risk_score == 0:
         risk_grade = "A+"
         risk_color = "bold green"
-    elif risk_score <= 20:
+    elif risk_score <= 30:
         risk_grade = "A"
         risk_color = "bold green"
-    elif risk_score <= 50:
+    elif risk_score <= 80:
         risk_grade = "B"
         risk_color = "bold yellow"
-    elif risk_score <= 100:
+    elif risk_score <= 150:
         risk_grade = "C"
         risk_color = "bold yellow"
-    elif risk_score <= 200:
+    elif risk_score <= 300:
         risk_grade = "D"
         risk_color = "bold red"
     else:
@@ -216,7 +340,7 @@ def display_terminal_summary(audit_data: List[Dict]) -> None:
         risk_color = "bold white on red"
 
     # Determine border color
-    if malicious > 0 or critical > 0:
+    if malicious > 0 or critical > 0 or evasion_count > 0 or total_artifacts > 0:
         card_border = "bold red"
     elif high > 0:
         card_border = "yellow"
@@ -233,11 +357,13 @@ def display_terminal_summary(audit_data: List[Dict]) -> None:
     left_grid.add_row("Vulnerable Packages", f"[bold yellow]{vulnerable}[/]" if vulnerable > 0 else "[bold green]0[/]")
     left_grid.add_row("Outdated Packages", f"[bold yellow]{outdated}[/]" if outdated > 0 else "[bold green]0[/]")
     left_grid.add_row("Total CVEs Found", str(total_cves))
+    left_grid.add_row("Malicious Artifacts", f"[bold red]{total_artifacts}[/]" if total_artifacts > 0 else "[bold green]0[/]")
+    left_grid.add_row("Evasion Alerts (HIDS)", f"[bold red]{evasion_count}[/]" if evasion_count > 0 else "[bold green]0[/]")
     left_grid.add_row("", "")
-    if malicious > 0:
-        left_grid.add_row("[bold white on red]STATUS[/]", "[bold white on red] !! MALICIOUS DETECTED !! [/]")
+    if malicious > 0 or evasion_count > 0 or total_artifacts > 5:
+        left_grid.add_row("[bold white on red]STATUS[/]", "[bold white on red] !! THREATS DETECTED !! [/]")
     else:
-        left_grid.add_row("STATUS", "[bold green][OK] No malicious packages detected[/]")
+        left_grid.add_row("STATUS", "[bold green][OK] Environment clean & secure[/]")
 
     right_grid = Table.grid(padding=(0, 1))
     right_grid.add_column("Label")
@@ -422,7 +548,9 @@ def generate_excel_report(audit_data: List[Dict], output_dir: str) -> str:
             "Component/Package": item["package"],
             "Ecosystem": item.get("ecosystem", "Unknown"),
             "Current Version": item["current_version"],
-            "Latest Version Available": item.get("latest_version", "N/A") or "N/A",
+            "Latest Version": item.get("latest_version", "N/A"),
+            "Threat Score": item.get("threat_score", 0),
+            "Threat Status": item.get("threat_status", "Clean"),
             "Malicious Flag": item.get("is_malicious", False),
             "Threat Sources": ", ".join(item.get("threat_sources", [])) if item.get("threat_sources") else "--",
             "Severity Level": item.get("severity", "NONE"),
@@ -589,14 +717,17 @@ def generate_excel_report(audit_data: List[Dict], output_dir: str) -> str:
                 sev_cell.font = severity_fonts[severity_val]
 
             # Apply malicious flag styling
-            mal_col_idx = df.columns.get_loc("Malicious Flag") + 1
+            mal_col_idx = df.columns.get_loc("Threat Status") + 1
             mal_cell = worksheet.cell(row=row_idx, column=mal_col_idx)
-            if mal_cell.value:
+            status_val = mal_cell.value
+            if status_val == "Malicious":
                 mal_cell.fill = PatternFill(start_color="B71C1C", end_color="B71C1C", fill_type="solid")
                 mal_cell.font = Font(name="Calibri", size=10, bold=True, color="FFFFFF")
-                mal_cell.value = "!! MALICIOUS"
+            elif status_val == "Suspicious":
+                mal_cell.fill = PatternFill(start_color="F57F17", end_color="F57F17", fill_type="solid")
+                mal_cell.font = Font(name="Calibri", size=10, bold=True, color="000000")
             else:
-                mal_cell.value = "CLEAN"
+                pass # Default clean styling
 
         # ── Column Widths ──
         column_widths = {

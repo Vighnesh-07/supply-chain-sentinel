@@ -30,9 +30,15 @@ COPY demo-packages/net-phantom     /demo-packages/net-phantom
 COPY demo-apps/nexus-studio/package.json ./
 COPY demo-apps/nexus-studio/server.js ./
 COPY demo-apps/nexus-studio/preload.cjs ./
+COPY demo-apps/nexus-studio/preload.py ./
 COPY demo-apps/nexus-studio/vite.config.js ./
 COPY demo-apps/nexus-studio/index.html ./
 COPY demo-apps/nexus-studio/src ./src
+
+# Install the Python audit hook as sitecustomize.py
+# Python auto-executes sitecustomize.py from PYTHONPATH on every interpreter start.
+# This ensures our security hook is active for ANY Python process in this container.
+RUN cp /app/preload.py /app/sitecustomize.py
 
 # Fix the file: reference paths for Docker context
 RUN sed -i 's|file:../../demo-packages/nexus-formatter|file:/demo-packages/nexus-formatter|' package.json && \
@@ -63,5 +69,9 @@ EXPOSE 3000
 # This monkey-patches http/https/net to log which package
 # initiated each outbound connection (writes to /app/network_attribution.log).
 ENV NODE_OPTIONS="--require /app/preload.cjs"
+
+# Enable the Python audit hook for all Python processes in this container.
+# sitecustomize.py is auto-loaded by the Python interpreter from PYTHONPATH.
+ENV PYTHONPATH="/app"
 
 CMD ["node", "server.js"]
