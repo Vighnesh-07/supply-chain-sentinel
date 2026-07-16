@@ -54,6 +54,12 @@ from utils.registry_client import check_all_versions
 from utils.vuln_scanner import scan_all_packages
 from utils.threat_intel import evaluate_malicious_indicators, POPULAR_PACKAGES
 from utils.static_analysis import deep_inspect_package, display_inspection_results, get_package_install_path
+from utils.ai_analyzer import (
+    generate_executive_summary,
+    analyze_dependency_risk,
+    display_executive_summary,
+    display_dependency_risk,
+)
 from utils.runtime_network import (
     get_container_sockets, display_network_report, get_threat_sockets, summarize_sockets,
     get_network_attribution_logs, correlate_attribution, display_attribution_summary,
@@ -293,6 +299,7 @@ def run_phase1(
     # The real value is scanning "clean" packages for hidden URLs, IPs, Base64 payloads.
     console.print(step_header("5.5", "DEEP STATIC ANALYSIS (Zero-Day IOC Hunt)", "|>"))
     inspection_map = {}
+    known_malicious = {name for name, flagged in malicious_flags.items() if flagged}
     clean_packages = [
         pkg for pkg in packages 
         if pkg["name"] not in known_malicious 
@@ -321,8 +328,16 @@ def run_phase1(
                     inspection_map[pkg["name"]] = result
                     
                     if result["scan_results"].get("ast_findings"):
-                        malicious_flags[pkg["name"]] = True
-                        threat_details[pkg["name"]] = threat_details.get(pkg["name"], []) + ["Zero-Day: Deep Scan detected Behavioral AST IOCs"]
+                        is_malicious = True
+                        ai_res = result.get("ai_results", {})
+                        if ai_res and ai_res.get("ai_available", False):
+                            intents = ai_res.get("intent_analyses", [])
+                            if intents:
+                                if all(intent.get("verdict") == "BENIGN" for intent in intents):
+                                    is_malicious = False
+                        if is_malicious:
+                            malicious_flags[pkg["name"]] = True
+                            threat_details[pkg["name"]] = threat_details.get(pkg["name"], []) + ["Zero-Day: Deep Scan detected Behavioral AST IOCs"]
                 scanned += 1
         console.print(f"  [bold green][OK][/] Scanned {scanned}/{len(clean_packages)} packages")
         if inspection_map:
@@ -341,37 +356,36 @@ def run_phase1(
     console.print(step_header(7, "REPORT GENERATION", "|>"))
     report_path = generate_excel_report(audit_data, report_dir)
 
-    # ── Final Summary ──
-    total = len(audit_data)
-    crit_high = sum(1 for d in audit_data if d["severity"] in ("CRITICAL", "HIGH"))
-    medium = sum(1 for d in audit_data if d["severity"] == "MEDIUM")
-    clean = sum(1 for d in audit_data if d["severity"] == "NONE")
-    malicious = sum(1 for d in audit_data if d.get("is_malicious"))
+    # Step 8: AI Intelligence (Layer 6)
+    console.print(step_header(8, "AI INTELLIGENCE ENGINE (Layer 6)", "|>"))
+    try:
+        # Dependency Risk Analysis
+        dep_risk = analyze_dependency_risk(packages)
+        if dep_risk:
+            display_dependency_risk(dep_risk)
 
-    # Ecosystem counts
-    eco_counts = {}
-    for d in audit_data:
-        eco = d.get("ecosystem", "Unknown")
-        eco_counts[eco] = eco_counts.get(eco, 0) + 1
-    eco_summary = ", ".join(f"{eco}: {count}" for eco, count in sorted(eco_counts.items()))
-
-    final_lines = []
-    final_lines.append(f"[bold green][OK] Multi-Ecosystem audit complete![/]")
-    final_lines.append("")
-    final_lines.append(f"  Ecosystems scanned:   [bold]{len(eco_counts)}[/] ({eco_summary})")
-    final_lines.append(f"  Packages scanned:     [bold]{total}[/]")
-    final_lines.append(f"  Malicious Packages:   [bold red]{malicious}[/]")
-    final_lines.append(f"  Critical / High:      [bold red]{crit_high}[/]")
-    final_lines.append(f"  Medium:               [bold yellow]{medium}[/]")
-    final_lines.append(f"  Clean:                [bold green]{clean}[/]")
-    final_lines.append(f"  Report:               [dim]{report_path}[/]")
-
-    console.print(Panel(
-        "\n".join(final_lines),
-        title="[bold green]AUDIT COMPLETE[/]",
-        border_style="green",
-        padding=(1, 2),
-    ))
+        # Executive Summary -- feed all raw scan data to the AI SOC analyst
+        summary_input = {
+            "packages_scanned": len(packages),
+            "ecosystems": list(set(p.get("ecosystem", "Unknown") for p in packages)),
+            "malicious_packages": [d["package"] for d in audit_data if d.get("is_malicious")],
+            "critical_vulns": [d["package"] for d in audit_data if d["severity"] == "CRITICAL"],
+            "high_vulns": [d["package"] for d in audit_data if d["severity"] == "HIGH"],
+            "threat_details": {k: v for k, v in threat_details.items() if v},
+            "inspection_summaries": {
+                k: v.get("risk_summary", "") for k, v in inspection_map.items()
+            },
+            "ai_intents": {
+                k: v.get("ai_results", {}).get("intent_analyses", [])
+                for k, v in inspection_map.items()
+                if v.get("ai_results", {}).get("intent_analyses")
+            },
+        }
+        exec_summary = generate_executive_summary(summary_input)
+        if exec_summary:
+            display_executive_summary(exec_summary)
+    except Exception as e:
+        console.print(f"  [dim yellow]AI analysis skipped: {e}[/]")
 
     return audit_data, report_path
 
@@ -493,8 +507,16 @@ def run_live_watch(container_names: list, interval: int, include_os: bool = Fals
                                     watch_inspection_map[pkg["name"]] = result
                                     
                                     if result["scan_results"].get("ast_findings"):
-                                        malicious_flags[pkg["name"]] = True
-                                        threat_details[pkg["name"]] = threat_details.get(pkg["name"], []) + ["Zero-Day: Deep Scan detected Behavioral AST IOCs"]
+                                        is_malicious = True
+                                        ai_res = result.get("ai_results", {})
+                                        if ai_res and ai_res.get("ai_available", False):
+                                            intents = ai_res.get("intent_analyses", [])
+                                            if intents:
+                                                if all(intent.get("verdict") == "BENIGN" for intent in intents):
+                                                    is_malicious = False
+                                        if is_malicious:
+                                            malicious_flags[pkg["name"]] = True
+                                            threat_details[pkg["name"]] = threat_details.get(pkg["name"], []) + ["Zero-Day: Deep Scan detected Behavioral AST IOCs"]
                         if watch_inspection_map:
                             console.print(f"  [bold red][!!] Hidden IOCs found in {len(watch_inspection_map)} 'clean' package(s)![/]")
                             # Print the detailed tables ONLY for critical/malicious items or Base64 payloads

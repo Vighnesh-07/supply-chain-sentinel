@@ -39,6 +39,10 @@ from .config import (
     REQUEST_TIMEOUT,
 )
 from .ast_scanner import scan_file_ast
+from .ai_analyzer import (
+    analyze_package_ai,
+    display_ai_results,
+)
 
 console = Console()
 
@@ -792,6 +796,7 @@ def deep_inspect_package(
     package_path: str,
     check_abuse_db: bool = True,
     check_vt: bool = True,
+    run_ai: bool = True,
 ) -> Dict:
     """
     Perform deep static inspection of an installed package:
@@ -911,6 +916,20 @@ def deep_inspect_package(
         parts.append(f"{malicious_urls} URL(s) flagged by VirusTotal")
 
     inspection["risk_summary"] = " | ".join(parts)
+
+    # Step 5: AI Analysis (Layer 6) -- runs on flagged files only
+    if run_ai:
+        try:
+            ai_results = analyze_package_ai(
+                package_name=package_name,
+                package_path=package_path,
+                ast_findings=scan.get("ast_findings", []),
+                scan_results=scan,
+            )
+            inspection["ai_results"] = ai_results
+        except Exception as e:
+            logger.warning(f"AI analysis failed for {package_name}: {e}")
+            inspection["ai_results"] = {"ai_available": False}
 
     return inspection
 
@@ -1342,6 +1361,11 @@ def display_inspection_results(inspections: List[Dict], only_critical: bool = Fa
             f"  [bold red][!!] Deep Scan Summary for '{pkg_name}':[/] "
             f"[yellow]{inspection['risk_summary']}[/]"
         )
+
+        # ── AI Analysis Results (Layer 6) ──
+        ai_results = inspection.get("ai_results", {})
+        if ai_results and ai_results.get("ai_available"):
+            display_ai_results(pkg_name, ai_results)
 
 
 def get_package_install_path(package_name: str, ecosystem: str, container_name: str = None) -> str:

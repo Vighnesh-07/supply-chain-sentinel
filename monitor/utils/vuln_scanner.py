@@ -47,6 +47,60 @@ def _classify_severity(score: float) -> str:
     return "NONE"
 
 
+import math
+
+def _parse_cvss_vector(vector: str) -> float:
+    """
+    Approximates CVSS v3/3.1 base score from a vector string.
+    e.g., CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H
+    """
+    if not vector.startswith("CVSS:3"):
+        return 0.0
+        
+    metrics = dict(part.split(":") for part in vector.split("/") if ":" in part)
+    
+    av_weights = {"N": 0.85, "A": 0.62, "L": 0.55, "P": 0.2}
+    ac_weights = {"L": 0.77, "H": 0.44}
+    pr_weights_u = {"N": 0.85, "L": 0.62, "H": 0.27}
+    pr_weights_c = {"N": 0.85, "L": 0.68, "H": 0.50}
+    ui_weights = {"N": 0.85, "R": 0.62}
+    cia_weights = {"H": 0.56, "L": 0.22, "N": 0.0}
+    
+    try:
+        s = metrics.get("S", "U")
+        av = av_weights.get(metrics.get("AV", "N"), 0.85)
+        ac = ac_weights.get(metrics.get("AC", "L"), 0.77)
+        ui = ui_weights.get(metrics.get("UI", "N"), 0.85)
+        
+        pr_w = pr_weights_c if s == "C" else pr_weights_u
+        pr = pr_w.get(metrics.get("PR", "N"), 0.85)
+        
+        c = cia_weights.get(metrics.get("C", "N"), 0.0)
+        i = cia_weights.get(metrics.get("I", "N"), 0.0)
+        a = cia_weights.get(metrics.get("A", "N"), 0.0)
+        
+        iss = 1.0 - (1.0 - c) * (1.0 - i) * (1.0 - a)
+        
+        if s == "U":
+            impact = 6.42 * iss
+        else:
+            impact = 7.52 * (iss - 0.029) - 3.25 * ((iss * 0.02) ** 15)
+            
+        exploitability = 8.22 * av * ac * pr * ui
+        
+        if impact <= 0:
+            return 0.0
+            
+        if s == "U":
+            score = impact + exploitability
+        else:
+            score = 1.08 * (impact + exploitability)
+            
+        return min(math.ceil(score * 10) / 10.0, 10.0)
+    except Exception:
+        return 0.0
+
+
 def _extract_severity_info(vulns: List[Dict]) -> Tuple[str, float, List[str]]:
     """
     Extract the maximum severity and CVE IDs from a list of OSV vulnerabilities.
@@ -55,74 +109,69 @@ def _extract_severity_info(vulns: List[Dict]) -> Tuple[str, float, List[str]]:
         vulns: List of vulnerability objects from OSV API response.
 
     Returns:
-        Tuple of (severity_label, max_cvss_score, list_of_cve_ids).
+        Tuple of (severity_label, max_cvss_score, list_of_cve_ids_with_scores).
     """
     max_score = 0.0
-    cve_ids = []
+    cve_scores = {}
 
     for vuln in vulns:
-        # ── Collect CVE identifiers ──
-        vuln_id = vuln.get("id", "")
-        aliases = vuln.get("aliases", [])
+        vuln_score = 0.0
 
-        for alias in aliases:
-            if alias.startswith("CVE-"):
-                cve_ids.append(alias)
-        if vuln_id.startswith("CVE-"):
-            cve_ids.append(vuln_id)
-
-        # ── Extract CVSS score from severity array ──
+        # 1. Parse CVSS vector strictly from OSV source data
         severity_list = vuln.get("severity", [])
         for sev in severity_list:
             sev_type = sev.get("type", "")
             score_val = sev.get("score", "")
-
-            # OSV provides CVSS vectors; try to extract the base score
             if sev_type.startswith("CVSS_V3") and isinstance(score_val, str):
-                try:
-                    numeric = float(score_val)
-                    max_score = max(max_score, numeric)
-                except ValueError:
-                    pass
+                vuln_score = max(vuln_score, _parse_cvss_vector(score_val))
 
-        # ── Fallback: Check database_specific.severity ──
-        db_specific = vuln.get("database_specific", {})
-        sev_str = db_specific.get("severity", "").upper()
-        if sev_str:
-            severity_score_map = {
-                "CRITICAL": 9.5,
-                "HIGH": 7.5,
-                "MODERATE": 5.5,
-                "MEDIUM": 5.5,
-                "LOW": 2.5,
-            }
-            mapped = severity_score_map.get(sev_str, 0.0)
-            max_score = max(max_score, mapped)
+        # 2. Fallback to specific severity string if no vector is provided by OSV
+        if vuln_score == 0.0:
+            for spec in [vuln.get("database_specific", {}), vuln.get("ecosystem_specific", {})]:
+                sev_str = spec.get("severity", "").upper()
+                if sev_str:
+                    mapping = {"CRITICAL": 9.5, "HIGH": 7.5, "MODERATE": 5.5, "MEDIUM": 5.5, "LOW": 2.5}
+                    vuln_score = max(vuln_score, mapping.get(sev_str, 0.0))
 
-        # ── Fallback: Check ecosystem_specific.severity ──
-        eco_specific = vuln.get("ecosystem_specific", {})
-        eco_sev = eco_specific.get("severity", "").upper()
-        if eco_sev:
-            severity_score_map = {
-                "CRITICAL": 9.5,
-                "HIGH": 7.5,
-                "MODERATE": 5.5,
-                "MEDIUM": 5.5,
-                "LOW": 2.5,
-            }
-            mapped = severity_score_map.get(eco_sev, 0.0)
-            max_score = max(max_score, mapped)
+        max_score = max(max_score, vuln_score)
 
-    # Deduplicate CVE IDs while preserving order
-    seen_cves = set()
-    unique_cves = []
-    for cve in cve_ids:
-        if cve not in seen_cves:
-            seen_cves.add(cve)
-            unique_cves.append(cve)
+        # 4. Associate this score with its CVE IDs (and OSV IDs if no CVE)
+        aliases = vuln.get("aliases", [])
+        vuln_id = vuln.get("id", "")
+
+        cves = [a for a in aliases if a.startswith("CVE-")]
+        if vuln_id.startswith("CVE-") and vuln_id not in cves:
+            cves.append(vuln_id)
+
+        # Fallback to primary ID if no CVEs
+        if not cves and vuln_id:
+            cves.append(vuln_id)
+
+        for cve in cves:
+            if cve not in cve_scores or cve_scores[cve] < vuln_score:
+                cve_scores[cve] = vuln_score
+
+    # Build the formatted list (CVEs first, then others)
+    cve_ids_with_scores = []
+    sorted_ids = sorted(cve_scores.keys(), key=lambda x: (not x.startswith("CVE-"), x))
+
+    for cid in sorted_ids:
+        score = cve_scores[cid]
+        if score > 0.0:
+            sev_label = _classify_severity(score)
+            cve_ids_with_scores.append(f"{cid} ({score:.1f} {sev_label})")
+        else:
+            cve_ids_with_scores.append(f"{cid} (N/A)")
 
     severity_label = _classify_severity(max_score)
-    return severity_label, max_score, unique_cves
+    if not vulns:
+        severity_label = "NONE"
+        max_score = 0.0
+    elif max_score == 0.0:
+        # If there are vulnerabilities but absolutely no severity metrics provided by the source
+        severity_label = "UNKNOWN"
+
+    return severity_label, max_score, cve_ids_with_scores
 
 
 def query_osv(package_name: str, version: str, ecosystem: str = "PyPI") -> Dict:

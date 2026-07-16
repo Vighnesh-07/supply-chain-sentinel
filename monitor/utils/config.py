@@ -48,6 +48,14 @@ VIRUSTOTAL_API_KEY = os.environ.get(
 )
 VIRUSTOTAL_RATE_LIMIT_DELAY = 15.0  # VT Public API allows 4 requests/min
 
+# Google Gemini — AI-powered code intelligence
+# You can paste your API key directly below, or use an environment variable.
+# To use key rotation/failover, paste multiple keys separated by commas.
+_raw_gemini_keys = os.environ.get("GEMINI_API_KEY", "AQ.Ab8RN6L20O1wGofGaDyOpoHZmF-LmyKpFQV7uUjex2XQwXhV7w,AQ.Ab8RN6JGp4XvCZoKrf3fafpyA4gPsFja4DGFCaU9ciznPQ66VA,AQ.Ab8RN6KqsqNiLuiCEWlhFWsYCm6y0q3a2jPjNocBrLmMHmnTUA,AQ.Ab8RN6JnzyVIM831lOy3adRDRPBqhBPm8fUopGiHtPxp5Klrag,AQ.Ab8RN6KvmpAhpGVQGS2sQDTG0UivKFvZViRbjM9fIs7aXWs26g")
+GEMINI_API_KEYS = [k.strip() for k in _raw_gemini_keys.split(",") if k.strip() and k.strip() != "YOUR_GEMINI_API_KEY_HERE"]
+GEMINI_API_KEY = GEMINI_API_KEYS[0] if GEMINI_API_KEYS else ""
+SENTINEL_AI_MODEL = os.environ.get("SENTINEL_AI_MODEL", "gemini-3.5-flash")
+
 # ═══════════════════════════════════════════════════════════════
 # REPORT
 # ═══════════════════════════════════════════════════════════════
@@ -107,10 +115,11 @@ BANNER = r"""
   |              \__ \  __/ | | | |_| | | | |  __/ |                   |
   |              |___/\___|_| |_|\__|_|_| |_|\___|_|                   |
   |                                                                    |
-  |         SUPPLY CHAIN SENTINEL  (Multi-Ecosystem)                   |
+  |         SUPPLY CHAIN SENTINEL  (Multi-Ecosystem + AI)              |
   |         SBOM Generation & Dependency Auditing                      |
   |         Python | Node.js | Go | Ruby | Java | Rust | PHP | .NET    |
   |         Threat Intel: OSV + GitHub Advisory + npm Audit            |
+  |         AI Engine: Intent | De-Obfuscation | Zero-Day | SOC       |
   |                                                                    |
   +====================================================================+
 [/bold cyan]
