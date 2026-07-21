@@ -14,9 +14,18 @@ build/
 venv/
 env/
 
-# ── Generated Reports ──
+# ── Secrets & Environment Variables ──
+.env
+.env.*
+*.env
+secrets/
+*.key
+*.pem
+
+# ── Generated Reports & Presentations ──
 reports/*.xlsx
 reports/*.xls
+*.pptx
 
 # ── SBOM Artifacts ──
 monitor/sbom.json

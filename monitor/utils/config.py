@@ -34,24 +34,18 @@ NPM_AUDIT_API_URL = "https://registry.npmjs.org/-/npm/v1/security/advisories"
 
 # AbuseIPDB — IP reputation checking
 ABUSEIPDB_API_URL = "https://api.abuseipdb.com/api/v2/check"
-ABUSEIPDB_API_KEY = os.environ.get(
-    "ABUSEIPDB_API_KEY",
-    "5bcbcf53426e6969c68d9e452204d386dba66876dfe413e0973c6ade3913e40f96164ed845bf3f4f",
-)
+ABUSEIPDB_API_KEY = os.environ.get("ABUSEIPDB_API_KEY", "")
 ABUSEIPDB_RATE_LIMIT_DELAY = 0.3   # 300ms between AbuseIPDB requests
 
 # VirusTotal — URL reputation checking
 VIRUSTOTAL_API_URL = "https://www.virustotal.com/api/v3/urls"
-VIRUSTOTAL_API_KEY = os.environ.get(
-    "VIRUSTOTAL_API_KEY", 
-    "7204d7b44b5d8b094997872aff791010b7827dc33300bd339ffe067a43fa195a"
-)
+VIRUSTOTAL_API_KEY = os.environ.get("VIRUSTOTAL_API_KEY", "")
 VIRUSTOTAL_RATE_LIMIT_DELAY = 15.0  # VT Public API allows 4 requests/min
 
 # Google Gemini — AI-powered code intelligence
-# You can paste your API key directly below, or use an environment variable.
-# To use key rotation/failover, paste multiple keys separated by commas.
-_raw_gemini_keys = os.environ.get("GEMINI_API_KEY", "AQ.Ab8RN6L20O1wGofGaDyOpoHZmF-LmyKpFQV7uUjex2XQwXhV7w,AQ.Ab8RN6JGp4XvCZoKrf3fafpyA4gPsFja4DGFCaU9ciznPQ66VA,AQ.Ab8RN6KqsqNiLuiCEWlhFWsYCm6y0q3a2jPjNocBrLmMHmnTUA,AQ.Ab8RN6JnzyVIM831lOy3adRDRPBqhBPm8fUopGiHtPxp5Klrag,AQ.Ab8RN6KvmpAhpGVQGS2sQDTG0UivKFvZViRbjM9fIs7aXWs26g")
+# Pass your API key via the GEMINI_API_KEY environment variable.
+# To use key rotation/failover, pass multiple keys separated by commas in GEMINI_API_KEY.
+_raw_gemini_keys = os.environ.get("GEMINI_API_KEY", "")
 GEMINI_API_KEYS = [k.strip() for k in _raw_gemini_keys.split(",") if k.strip() and k.strip() != "YOUR_GEMINI_API_KEY_HERE"]
 GEMINI_API_KEY = GEMINI_API_KEYS[0] if GEMINI_API_KEYS else ""
 SENTINEL_AI_MODEL = os.environ.get("SENTINEL_AI_MODEL", "gemini-3.5-flash")
