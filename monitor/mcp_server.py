@@ -8,7 +8,7 @@ from typing import List, Dict, Any, Optional
 # Ensure monitor directory is in path for imports
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from fastmcp import FastMCP, Context
+from mcp.server.fastmcp import FastMCP, Context
 from utils.config import MCP_SERVER_NAME, MCP_SERVER_VERSION, REPORT_DIR
 from utils.sbom import generate_sbom, parse_sbom
 from utils.registry_client import check_all_versions
@@ -20,7 +20,7 @@ from utils.ecosystem_registry import ECOSYSTEMS
 import monitor
 
 # Initialize FastMCP Server
-mcp = FastMCP(MCP_SERVER_NAME, version=MCP_SERVER_VERSION)
+mcp = FastMCP(MCP_SERVER_NAME)
 
 # ═══════════════════════════════════════════════════════════════
 # TOOLS

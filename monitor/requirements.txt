@@ -21,4 +21,4 @@ tree-sitter-go>=0.23.0
 tree-sitter-ruby>=0.23.0
 
 # MCP Server integration
-fastmcp>=0.1.0
+mcp>=1.2.0
