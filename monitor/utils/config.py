@@ -58,6 +58,12 @@ REPORT_FILENAME_TEMPLATE = "supply_chain_audit_{timestamp}.xlsx"
 RUNTIME_LOG_FILE = os.path.join(REPORT_DIR, "runtime_alerts.log")
 
 # ═══════════════════════════════════════════════════════════════
+# MCP SERVER
+# ═══════════════════════════════════════════════════════════════
+MCP_SERVER_NAME = "Supply Chain Sentinel"
+MCP_SERVER_VERSION = "1.0.0"
+
+# ═══════════════════════════════════════════════════════════════
 # RATE LIMITING
 # ═══════════════════════════════════════════════════════════════
 PYPI_RATE_LIMIT_DELAY = 0.1       # 100ms between PyPI requests

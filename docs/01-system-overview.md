@@ -61,6 +61,7 @@ flowchart TD
     subgraph OUTPUT["OUTPUT STAGE"]
         S["Terminal Dashboard\n(Rich / Textual)"]
         T["Excel Report\n(.xlsx with Severity Sheets)"]
+        U["MCP Server Interface\n(AI Clients: Claude/Cursor)"]
     end
 
     A --> B
@@ -69,11 +70,11 @@ flowchart TD
     C --> I & J & K & L
     C --> M & N
     A --> P & Q
-    E --> S & T
-    H --> S & T
-    I & J & K & L --> S & T
-    O --> S & T
-    R --> S & T
+    E --> S & T & U
+    H --> S & T & U
+    I & J & K & L --> S & T & U
+    O --> S & T & U
+    R --> S & T & U
 
     classDef inputStyle fill:#1a1a2e,stroke:#e94560,stroke-width:2px,color:#eee
     classDef sbomStyle fill:#16213e,stroke:#0f3460,stroke-width:2px,color:#eee
@@ -117,7 +118,7 @@ flowchart TD
 2. **Syft** produces a machine-readable **CycloneDX BOM** listing every component.
 3. That BOM fans out to **four parallel analysis tracks**: version drift, vulnerability scanning, threat intelligence, and static analysis.
 4. Independently, the **running container** is monitored for runtime anomalies.
-5. All six tracks converge into a unified **findings model** that feeds both the terminal dashboard and the Excel report.
+5. All six tracks converge into a unified **findings model** that feeds the terminal dashboard, the Excel report, and the **MCP Server Interface** (allowing external AI clients to query findings as tools).
 
 > [!NOTE]
 > Each stage is designed to operate independently so that failures in one track (e.g., a registry API timeout) do not block the remaining analyses. Results are merged at the output stage with clear provenance indicating which engine flagged each finding.

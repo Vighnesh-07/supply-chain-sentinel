@@ -144,6 +144,27 @@ flowchart LR
 
 ---
 
+## MCP Server Mode (For AI Clients)
+
+Supply Chain Sentinel can run as a **Model Context Protocol (MCP)** server, allowing AI clients (Claude Desktop, Cursor, Gemini, etc.) to use its security scanners natively as tools. This enables zero-cost AI reasoning since the client provides the intelligence while Sentinel provides the data.
+
+### Features
+- **9 Granular Tools:** `full_audit`, `generate_sbom`, `check_typosquatting`, etc.
+- **5 Context Resources:** Query configuration, blocklists, and scan history.
+- **3 Security Prompts:** Pre-configured workflows for triage and deep investigation.
+- **Dual Transport:** Runs via `stdio` (local) or `http` (remote).
+
+### Setup for Claude Desktop
+1. Generate the configuration file automatically:
+```bash
+python mcp_config_generator.py
+```
+2. Follow the on-screen instructions to copy the output to your `claude_desktop_config.json`.
+3. Restart Claude Desktop.
+4. Ask Claude: *"Run a security audit on the nexus-studio-app Docker container."*
+
+---
+
 ## Quick Start
 
 ### Prerequisites

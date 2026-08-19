@@ -1,0 +1,25 @@
+FROM python:3.11-slim
+
+# Install system dependencies (Syft for SBOM generation)
+RUN apt-get update && \
+    apt-get install -y curl && \
+    curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy the requirements and install them
+COPY monitor/requirements.txt /app/monitor/
+RUN pip install --no-cache-dir -r /app/monitor/requirements.txt
+
+# Copy the rest of the application
+COPY monitor/ /app/monitor/
+
+# Create a volume for reports so they persist
+VOLUME /app/reports
+
+EXPOSE 8080
+
+# Run the MCP server in HTTP mode by default
+CMD ["python", "/app/monitor/mcp_server.py", "--transport", "http", "--port", "8080"]
