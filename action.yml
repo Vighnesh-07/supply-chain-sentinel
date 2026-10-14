@@ -1,0 +1,123 @@
+name: 'Supply Chain Sentinel'
+description: 'AI-powered software supply chain security scanner using Syft and Gemini'
+author: 'Vighnesh'
+
+branding:
+  icon: 'shield'
+  color: 'blue'
+
+inputs:
+  image_name:
+    description: 'Docker image to scan (e.g. my-app:latest)'
+    required: true
+  dockerfile_path:
+    description: 'Path to the Dockerfile to build before scanning'
+    required: false
+    default: 'Dockerfile'
+  docker_context:
+    description: 'Docker build context directory'
+    required: false
+    default: '.'
+  include_os:
+    description: 'Include OS-level packages in the scan (true/false)'
+    required: false
+    default: 'false'
+  fail_on_critical:
+    description: 'Exit with a non-zero code if CRITICAL vulnerabilities are found'
+    required: false
+    default: 'true'
+  gemini_api_key:
+    description: 'Gemini API key for AI-powered analysis (pass via secrets)'
+    required: false
+    default: ''
+  sarif_output:
+    description: 'Path where the SARIF results file will be written'
+    required: false
+    default: 'results.sarif'
+  report_dir:
+    description: 'Directory where all reports will be saved'
+    required: false
+    default: './reports'
+
+outputs:
+  sarif_path:
+    description: 'Absolute path to the generated SARIF file'
+    value: ${{ steps.run-sentinel.outputs.sarif_path }}
+  error_count:
+    description: 'Number of critical (error-level) findings'
+    value: ${{ steps.run-sentinel.outputs.error_count }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Install Syft
+      shell: bash
+      run: |
+        curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+        syft version
+
+    - name: Install Python dependencies
+      shell: bash
+      run: |
+        cd ${{ github.action_path }}/monitor && pip install -r requirements.txt
+
+    - name: Build Docker image (if Dockerfile exists)
+      shell: bash
+      run: |
+        DOCKERFILE="${{ inputs.dockerfile_path }}"
+        IMAGE="${{ inputs.image_name }}"
+        CONTEXT="${{ inputs.docker_context }}"
+        if [ -f "$DOCKERFILE" ]; then
+          echo "Building Docker image: $IMAGE"
+          docker build -t "$IMAGE" -f "$DOCKERFILE" "$CONTEXT"
+        else
+          echo "No Dockerfile found at $DOCKERFILE, skipping build"
+        fi
+
+    - name: Run Supply Chain Sentinel
+      id: run-sentinel
+      shell: bash
+      env:
+        GEMINI_API_KEY: ${{ inputs.gemini_api_key }}
+      run: |
+        REPORT_DIR="${{ inputs.report_dir }}"
+        SARIF_OUT="${{ inputs.sarif_output }}"
+        INCLUDE_OS_FLAG=""
+        if [ "${{ inputs.include_os }}" == "true" ]; then
+          INCLUDE_OS_FLAG="--include-os"
+        fi
+
+        mkdir -p "$REPORT_DIR"
+
+        cd ${{ github.action_path }}/monitor && python monitor.py \
+          --image "${{ inputs.image_name }}" \
+          --sarif "$SARIF_OUT" \
+          --report-dir "$REPORT_DIR" \
+          $INCLUDE_OS_FLAG
+
+        echo "sarif_path=$SARIF_OUT" >> $GITHUB_OUTPUT
+
+        ERROR_COUNT=$(python -c "
+        import json, sys
+        try:
+            with open('$SARIF_OUT') as f:
+                sarif = json.load(f)
+            results = sarif.get('runs', [{}])[0].get('results', [])
+            errors = sum(1 for r in results if r.get('level') == 'error')
+            print(errors)
+        except Exception:
+            print(0)
+        ")
+        echo "error_count=$ERROR_COUNT" >> $GITHUB_OUTPUT
+
+        if [ "$ERROR_COUNT" -gt 0 ] && [ "${{ inputs.fail_on_critical }}" == "true" ]; then
+          echo "FAIL: $ERROR_COUNT critical security findings detected!"
+          exit 1
+        fi
+
+    - name: Upload SARIF to GitHub Code Scanning
+      uses: github/codeql-action/upload-sarif@v3
+      if: always()
+      with:
+        sarif_file: ${{ inputs.sarif_output }}
+        category: supply-chain-sentinel

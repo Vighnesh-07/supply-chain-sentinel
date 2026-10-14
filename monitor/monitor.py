@@ -164,6 +164,29 @@ Examples:
         action="store_true",
         help="Enable runtime network monitoring (capture active TCP/UDP sockets inside containers)",
     )
+    parser.add_argument(
+        "--ebpf",
+        action="store_true",
+        help="Enable eBPF kernel-level monitoring (Linux + BCC required; falls back to docker-top on other platforms)",
+    )
+    parser.add_argument(
+        "--ebpf-duration",
+        type=int,
+        default=60,
+        metavar="SECONDS",
+        help="Duration for eBPF monitoring session in seconds (default: 60, 0 = run until Ctrl+C)",
+    )
+    parser.add_argument(
+        "--sarif",
+        default=None,
+        metavar="PATH",
+        help="Path for SARIF output file (default: auto-generated in report_dir). Pass empty string to disable.",
+    )
+    parser.add_argument(
+        "--no-sarif",
+        action="store_true",
+        help="Disable SARIF output entirely",
+    )
     return parser.parse_args()
 
 
@@ -237,9 +260,23 @@ def run_phase1(
     report_dir: str,
     skip_sbom: bool = False,
     include_os: bool = False,
+    sarif_path: str = None,
+    no_sarif: bool = False,
 ):
     """
     Execute the complete Phase 1 audit pipeline.
+
+    Args:
+        image_name:  Docker image tag to scan (e.g., ``"vulnapp:latest"``).
+        sbom_file:   Path to save/load the SBOM JSON.
+        report_dir:  Directory where Excel and SARIF reports are written.
+        skip_sbom:   If True, skip Syft SBOM generation and reuse an existing file.
+        include_os:  If True, include OS-level packages in the audit.
+        sarif_path:  Explicit output path for the SARIF file.  ``None`` means
+                     auto-generate a timestamped name inside ``report_dir``.
+                     Pass an empty string to disable SARIF output (same as
+                     ``no_sarif=True``).
+        no_sarif:    If True, skip SARIF export entirely.
     """
     console.print(BANNER)
 
@@ -356,6 +393,32 @@ def run_phase1(
     console.print(step_header(7, "REPORT GENERATION", "|>"))
     report_path = generate_excel_report(audit_data, report_dir)
 
+    # Step 7.5: SARIF Export (CI/CD Integration)
+    console.print(step_header("7.5", "SARIF EXPORT (GitHub Code Scanning)", "|>"))
+    if not no_sarif and sarif_path != "":
+        try:
+            from utils.sarif_exporter import export_sarif, get_sarif_summary
+            _sarif_output = sarif_path or os.path.join(
+                report_dir,
+                f"supply_chain_sentinel_{datetime.now().strftime('%Y%m%d_%H%M%S')}.sarif",
+            )
+            sarif_doc = export_sarif(audit_data, image_name, _sarif_output)
+            summary = get_sarif_summary(sarif_doc) if isinstance(sarif_doc, dict) else {}
+            if summary:
+                console.print(
+                    f"  [bold cyan]SARIF Summary:[/] {summary.get('errors', 0)} errors"
+                    f" | {summary.get('warnings', 0)} warnings"
+                    f" | {summary.get('notes', 0)} notes"
+                )
+                console.print(
+                    f"  [dim]Upload to GitHub: gh code-scanning upload-results"
+                    f" --ref HEAD --commit <SHA> --sarif {_sarif_output}[/]"
+                )
+        except Exception as e:
+            console.print(f"  [dim yellow][!] SARIF export skipped: {e}[/]")
+    else:
+        console.print("  [dim]SARIF export disabled (--no-sarif).[/]")
+
     # Step 8: AI Intelligence (Layer 6)
     console.print(step_header(8, "AI INTELLIGENCE ENGINE (Layer 6)", "|>"))
     try:
@@ -394,8 +457,25 @@ def run_phase1(
 # PHASE 2 ENHANCEMENT: RUNTIME WATCH
 # ═══════════════════════════════════════════════════════════════
 
-def run_live_watch(container_names: list, interval: int, include_os: bool = False, net_monitor: bool = False):
-    """Run continuously, polling multiple containers for package changes."""
+def run_live_watch(
+    container_names: list,
+    interval: int,
+    include_os: bool = False,
+    net_monitor: bool = False,
+    ebpf_enabled: bool = False,
+    ebpf_duration: int = 60,
+):
+    """Run continuously, polling multiple containers for package changes.
+
+    Args:
+        container_names: List of Docker container names/IDs to watch.
+        interval:        Polling interval in seconds between package scans.
+        include_os:      If True, include OS-level packages in live scans.
+        net_monitor:     If True, read /proc/net/tcp sockets each cycle.
+        ebpf_enabled:    If True, run a kernel-level eBPF monitoring session
+                         before entering the polling loop.
+        ebpf_duration:   Seconds for the eBPF session (0 = until Ctrl+C).
+    """
     console.print(BANNER)
 
     config_table = Table(show_header=False, border_style="cyan", padding=(0, 2), expand=False)
@@ -406,6 +486,7 @@ def run_live_watch(container_names: list, interval: int, include_os: bool = Fals
     config_table.add_row("Include OS Pkgs", str(include_os))
     config_table.add_row("Log File", str(RUNTIME_LOG_FILE))
     config_table.add_row("Net Monitor", "[bold green]ENABLED[/]" if net_monitor else "[dim]Disabled[/]")
+    config_table.add_row("eBPF Monitor", "[bold green]ENABLED[/]" if ebpf_enabled else "[dim]Disabled[/]")
     config_table.add_row("Mode", "Live Runtime Watcher (Multi-Ecosystem)")
     config_table.add_row("Started At", datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
 
@@ -420,6 +501,29 @@ def run_live_watch(container_names: list, interval: int, include_os: bool = Fals
     console.print(f"  [dim]Polling every {interval}s for package changes in {len(container_names)} container(s)...[/]\n")
 
     os.makedirs(os.path.dirname(RUNTIME_LOG_FILE), exist_ok=True)
+
+    # -- eBPF Kernel Monitor (if enabled) --
+    if ebpf_enabled:
+        from utils.ebpf_monitor import run_ebpf_session, get_ebpf_capabilities, display_ebpf_event  # noqa: F401
+        caps = get_ebpf_capabilities()
+        console.print(
+            f"  [bold cyan][>>] eBPF Monitor:[/] mode=[bold]{caps['mode']}[/]"
+            f" kernel={caps['kernel']} bcc={caps['bcc_available']}"
+        )
+        ebpf_log = RUNTIME_LOG_FILE.replace(".log", "_ebpf.log")
+        ebpf_events = run_ebpf_session(
+            container_names=container_names,
+            duration_seconds=ebpf_duration if ebpf_duration > 0 else None,
+            log_file=ebpf_log,
+        )
+        if ebpf_events:
+            console.print(
+                f"  [bold red][!!] eBPF captured {len(ebpf_events)} security event(s)![/]"
+            )
+            for evt_dict in ebpf_events[:20]:  # Show top 20
+                console.print(
+                    f"      [{evt_dict['severity']}] {evt_dict['comm']} | {evt_dict['reason']}"
+                )
 
     # Track previous state individually per container (Initialize empty to scan everything on startup)
     previous_packages = {c: {} for c in container_names}
@@ -707,6 +811,8 @@ def main():
             interval=args.interval,
             include_os=include_os,
             net_monitor=net_monitor,
+            ebpf_enabled=args.ebpf,
+            ebpf_duration=args.ebpf_duration,
         )
     elif args.container and not args.watch:
         # Run Phase 1 pipeline but against live containers instead of image
@@ -875,6 +981,8 @@ def main():
             report_dir=report_dir,
             skip_sbom=args.skip_sbom,
             include_os=include_os,
+            sarif_path=args.sarif,
+            no_sarif=args.no_sarif,
         )
 
 

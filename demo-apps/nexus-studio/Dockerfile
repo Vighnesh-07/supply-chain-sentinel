@@ -20,7 +20,7 @@ COPY demo-packages/data-stealer    /demo-packages/data-stealer
 COPY demo-packages/wallet-drainer  /demo-packages/wallet-drainer
 COPY demo-packages/env-harvester  /demo-packages/env-harvester
 COPY demo-packages/hex-beacon      /demo-packages/hex-beacon
-COPY demo-packages/b64-dropper     /demo-packages/b64-dropper
+COPY demo-packages/b64-encoder     /demo-packages/b64-encoder
 COPY demo-packages/cmd-implant     /demo-packages/cmd-implant
 COPY demo-packages/fs-backdoor     /demo-packages/fs-backdoor
 COPY demo-packages/webhook-spy     /demo-packages/webhook-spy
@@ -47,7 +47,7 @@ RUN sed -i 's|file:../../demo-packages/nexus-formatter|file:/demo-packages/nexus
     sed -i 's|file:../../demo-packages/wallet-drainer|file:/demo-packages/wallet-drainer|' package.json && \
     sed -i 's|file:../../demo-packages/env-harvester|file:/demo-packages/env-harvester|' package.json && \
     sed -i 's|file:../../demo-packages/hex-beacon|file:/demo-packages/hex-beacon|' package.json && \
-    sed -i 's|file:../../demo-packages/b64-dropper|file:/demo-packages/b64-dropper|' package.json && \
+    sed -i 's|file:../../demo-packages/b64-encoder|file:/demo-packages/b64-encoder|' package.json && \
     sed -i 's|file:../../demo-packages/cmd-implant|file:/demo-packages/cmd-implant|' package.json && \
     sed -i 's|file:../../demo-packages/fs-backdoor|file:/demo-packages/fs-backdoor|' package.json && \
     sed -i 's|file:../../demo-packages/webhook-spy|file:/demo-packages/webhook-spy|' package.json && \

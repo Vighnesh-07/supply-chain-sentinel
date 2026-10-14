@@ -1,0 +1,8 @@
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+pydantic==2.8.2
+rich==13.9.2
+requests==2.32.3
+# NOTE: BCC (bpfcc-tools / python3-bpfcc) is installed via apt in the Dockerfile,
+# NOT via pip. The bcc Python bindings are system packages that depend on
+# compiled C extensions linked against the system libelf and kernel headers.

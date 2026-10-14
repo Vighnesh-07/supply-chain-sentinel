@@ -1,0 +1,244 @@
+name: Supply Chain Sentinel
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+    branches:
+      - main
+      - master
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+    inputs:
+      image_name:
+        description: 'Docker image name to scan'
+        default: 'target-app:latest'
+        type: string
+      dockerfile_path:
+        description: 'Path to Dockerfile'
+        default: 'Dockerfile'
+        type: string
+      docker_context:
+        description: 'Docker build context directory'
+        default: '.'
+        type: string
+      include_os:
+        description: 'Include OS packages in scan'
+        default: 'false'
+        type: string
+      fail_on_critical:
+        description: 'Fail the CI if CRITICAL vulnerabilities are found'
+        default: 'true'
+        type: string
+  workflow_call:
+    inputs:
+      image_name:
+        description: 'Docker image name to scan'
+        default: 'target-app:latest'
+        type: string
+      dockerfile_path:
+        description: 'Path to Dockerfile'
+        default: 'Dockerfile'
+        type: string
+      docker_context:
+        description: 'Docker build context directory'
+        default: '.'
+        type: string
+      include_os:
+        description: 'Include OS packages in scan'
+        default: 'false'
+        type: string
+      fail_on_critical:
+        description: 'Fail the CI if CRITICAL vulnerabilities are found'
+        default: 'true'
+        type: string
+    outputs:
+      sarif_path:
+        description: 'Path to generated SARIF file'
+        value: ${{ jobs.dependency-audit.outputs.sarif_path }}
+      error_count:
+        description: 'Number of errors found'
+        value: ${{ jobs.dependency-audit.outputs.error_count }}
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
+jobs:
+  dependency-audit:
+    name: Dependency Audit
+    runs-on: ubuntu-latest
+
+    outputs:
+      sarif_path: ${{ steps.set-outputs.outputs.sarif_path }}
+      error_count: ${{ steps.check-results.outputs.error_count }}
+      warning_count: ${{ steps.check-results.outputs.warning_count }}
+      package_count: ${{ steps.check-results.outputs.package_count }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Syft
+        shell: bash
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+          syft version
+
+      - name: Install Python dependencies
+        shell: bash
+        run: |
+          cd monitor && pip install --no-cache-dir -r requirements.txt
+
+      - name: Build target Docker image
+        id: docker-build
+        shell: bash
+        run: |
+          DOCKERFILE="${{ inputs.dockerfile_path || 'Dockerfile' }}"
+          IMAGE="${{ inputs.image_name || 'target-app:latest' }}"
+          CONTEXT="${{ inputs.docker_context || '.' }}"
+          if [ -f "$DOCKERFILE" ]; then
+            echo "Building Docker image: $IMAGE from $DOCKERFILE"
+            docker build -t "$IMAGE" -f "$DOCKERFILE" "$CONTEXT"
+          else
+            echo "No Dockerfile found at $DOCKERFILE, skipping build"
+            echo "build_skipped=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run Supply Chain Sentinel
+        id: audit
+        shell: bash
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          mkdir -p monitor/reports
+          IMAGE="${{ inputs.image_name || 'target-app:latest' }}"
+          INCLUDE_OS_FLAG=""
+          if [ "${{ inputs.include_os || 'false' }}" == "true" ]; then
+            INCLUDE_OS_FLAG="--include-os"
+          fi
+          cd monitor && python monitor.py \
+            --image "$IMAGE" \
+            --report-dir ./reports \
+            --sarif ./reports/results.sarif \
+            $INCLUDE_OS_FLAG
+
+      - name: Set output paths
+        id: set-outputs
+        shell: bash
+        run: |
+          echo "sarif_path=monitor/reports/results.sarif" >> $GITHUB_OUTPUT
+
+      - name: Check results and set job outputs
+        id: check-results
+        shell: bash
+        run: |
+          ERROR_COUNT=$(python -c "
+          import json, sys
+          try:
+              with open('monitor/reports/results.sarif') as f:
+                  sarif = json.load(f)
+              results = sarif.get('runs', [{}])[0].get('results', [])
+              errors = sum(1 for r in results if r.get('level') == 'error')
+              print(errors)
+          except Exception as e:
+              print(0)
+          ")
+          WARNING_COUNT=$(python -c "
+          import json, sys
+          try:
+              with open('monitor/reports/results.sarif') as f:
+                  sarif = json.load(f)
+              results = sarif.get('runs', [{}])[0].get('results', [])
+              warnings = sum(1 for r in results if r.get('level') == 'warning')
+              print(warnings)
+          except Exception as e:
+              print(0)
+          ")
+          PACKAGE_COUNT=$(python -c "
+          import json, sys
+          try:
+              with open('monitor/reports/results.sarif') as f:
+                  sarif = json.load(f)
+              tool = sarif.get('runs', [{}])[0].get('tool', {})
+              driver = tool.get('driver', {})
+              rules = driver.get('rules', [])
+              print(len(rules))
+          except Exception as e:
+              print(0)
+          ")
+          echo "error_count=$ERROR_COUNT" >> $GITHUB_OUTPUT
+          echo "warning_count=$WARNING_COUNT" >> $GITHUB_OUTPUT
+          echo "package_count=$PACKAGE_COUNT" >> $GITHUB_OUTPUT
+          echo "Errors: $ERROR_COUNT | Warnings: $WARNING_COUNT | Rules/Packages: $PACKAGE_COUNT"
+          if [ "$ERROR_COUNT" -gt 0 ] && [ "${{ inputs.fail_on_critical || 'true' }}" == "true" ]; then
+            echo "FAIL: $ERROR_COUNT critical security findings detected!"
+            exit 1
+          fi
+
+      - name: Upload SARIF to GitHub Code Scanning
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: monitor/reports/results.sarif
+          category: supply-chain-sentinel
+
+      - name: Upload reports as artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sentinel-reports
+          path: monitor/reports/
+          retention-days: 30
+
+      - name: Post PR comment
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let errorCount = 0;
+            let warningCount = 0;
+            let packageCount = 0;
+            try {
+              const sarifRaw = fs.readFileSync('monitor/reports/results.sarif', 'utf8');
+              const sarif = JSON.parse(sarifRaw);
+              const results = (sarif.runs || [{}])[0].results || [];
+              errorCount = results.filter(r => r.level === 'error').length;
+              warningCount = results.filter(r => r.level === 'warning').length;
+              const driver = ((sarif.runs || [{}])[0].tool || {}).driver || {};
+              packageCount = (driver.rules || []).length;
+            } catch (e) {
+              console.log('Could not parse SARIF file:', e.message);
+            }
+            const statusIcon = errorCount > 0 ? '[FAIL]' : '[PASS]';
+            const body = `## Supply Chain Sentinel Results ${statusIcon}
+
+            | Metric | Count |
+            |--------|-------|
+            | Errors (Critical Findings) | ${errorCount} |
+            | Warnings | ${warningCount} |
+            | Packages Scanned | ${packageCount} |
+
+            ${errorCount > 0
+              ? '> **Critical vulnerabilities detected.** Review the Security tab for details.'
+              : '> No critical vulnerabilities found.'}
+
+            Full reports are available as [workflow artifacts](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}).`;
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });

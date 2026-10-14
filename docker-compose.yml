@@ -52,6 +52,35 @@ services:
           memory: 512M
           cpus: "0.5"
 
+  # ─── eBPF Monitoring Sidecar ─────────────────────────────
+  # Start with: docker compose --profile ebpf up sentinel-agent -d
+  sentinel-agent:
+    build:
+      context: ./sentinel-agent
+      dockerfile: Dockerfile
+    image: sentinel-agent:latest
+    container_name: sentinel-agent
+    # eBPF requires privileged mode and access to host PID/network namespaces
+    privileged: true
+    pid: "host"
+    network_mode: "host"
+    volumes:
+      # Kernel headers and modules (read-only)
+      - /sys:/sys:ro
+      - /proc:/proc:ro
+      - /lib/modules:/lib/modules:ro
+      - /usr/src:/usr/src:ro
+      # Log output directory
+      - ./monitor/reports:/reports
+    ports:
+      - "7777:7777"
+    environment:
+      - SENTINEL_LOG_DIR=/reports
+    command: ["--port", "7777"]
+    restart: unless-stopped
+    profiles:
+      - ebpf   # Only started when: docker compose --profile ebpf up
+
 # ─── Networks ──────────────────────────────────────────────
 networks:
   sentinel-net:

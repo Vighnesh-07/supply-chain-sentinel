@@ -2,8 +2,25 @@ import os
 import sys
 import json
 import asyncio
+import warnings
 from datetime import datetime
 from typing import List, Dict, Any, Optional
+
+# Suppress warnings that could corrupt the stdio JSON-RPC stream
+warnings.filterwarnings("ignore")
+
+# Redirect all print() and rich Console() output to stderr
+# This is CRITICAL because the MCP JSON-RPC protocol uses stdout, 
+# and any stray text output will cause Claude Desktop to disconnect.
+import builtins
+import rich.console
+_original_print = builtins.print
+builtins.print = lambda *a, **kw: _original_print(*a, file=sys.stderr, **kw)
+_original_console_init = rich.console.Console.__init__
+def _new_console_init(self, *a, **kw):
+    kw['file'] = sys.stderr
+    _original_console_init(self, *a, **kw)
+rich.console.Console.__init__ = _new_console_init
 
 # Ensure monitor directory is in path for imports
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

