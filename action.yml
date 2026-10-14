@@ -124,24 +124,8 @@ runs:
     - name: Evaluate security findings and gate CI
       shell: bash
       run: |
-        SARIF_OUT="${{ inputs.sarif_output }}"
-        ERROR_COUNT=0
-        if [ -f "$SARIF_OUT" ]; then
-          ERROR_COUNT=$(python -c "
-          import json, sys
-          try:
-              with open('$SARIF_OUT') as f:
-                  sarif = json.load(f)
-              results = sarif.get('runs', [{}])[0].get('results', [])
-              errors = sum(1 for r in results if r.get('level') == 'error')
-              print(errors)
-          except Exception:
-              print(0)
-          ")
+        FAIL_FLAG=""
+        if [ "${{ inputs.fail_on_critical }}" == "true" ]; then
+          FAIL_FLAG="--fail-on-critical"
         fi
-        echo "error_count=$ERROR_COUNT" >> $GITHUB_OUTPUT
-
-        if [ "$ERROR_COUNT" -gt 0 ] && [ "${{ inputs.fail_on_critical }}" == "true" ]; then
-          echo "FAIL: $ERROR_COUNT critical security findings detected!"
-          exit 1
-        fi
+        python ${{ github.action_path }}/monitor/utils/ci_gate.py "${{ inputs.sarif_output }}" $FAIL_FLAG

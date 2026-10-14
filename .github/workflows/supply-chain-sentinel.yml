@@ -230,40 +230,8 @@ jobs:
         if: always()
         shell: bash
         run: |
-          if [ -f "monitor/reports/results.sarif" ]; then
-            ERROR_COUNT=$(python -c "
-            import json, sys
-            try:
-                with open('monitor/reports/results.sarif') as f:
-                    sarif = json.load(f)
-                results = sarif.get('runs', [{}])[0].get('results', [])
-                errors = sum(1 for r in results if r.get('level') == 'error')
-                print(errors)
-            except Exception:
-                print(0)
-            ")
-            WARNING_COUNT=$(python -c "
-            import json, sys
-            try:
-                with open('monitor/reports/results.sarif') as f:
-                    sarif = json.load(f)
-                results = sarif.get('runs', [{}])[0].get('results', [])
-                warnings = sum(1 for r in results if r.get('level') == 'warning')
-                print(warnings)
-            except Exception:
-                print(0)
-            ")
-            echo "error_count=$ERROR_COUNT" >> $GITHUB_OUTPUT
-            echo "warning_count=$WARNING_COUNT" >> $GITHUB_OUTPUT
-            echo "Errors: $ERROR_COUNT | Warnings: $WARNING_COUNT"
-            if [ "$ERROR_COUNT" -gt 0 ] && [ "${{ inputs.fail_on_critical || 'true' }}" == "true" ]; then
-              echo "FAIL: $ERROR_COUNT critical security findings detected!"
-              exit 1
-            fi
-          else
-            echo "No SARIF report generated at monitor/reports/results.sarif"
-            if [ "${{ steps.audit.outcome }}" != "success" ]; then
-              echo "Supply Chain Sentinel audit step failed."
-              exit 1
-            fi
+          FAIL_FLAG=""
+          if [ "${{ inputs.fail_on_critical || 'true' }}" == "true" ]; then
+            FAIL_FLAG="--fail-on-critical"
           fi
+          python monitor/utils/ci_gate.py monitor/reports/results.sarif $FAIL_FLAG
