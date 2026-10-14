@@ -67,11 +67,27 @@ runs:
         DOCKERFILE="${{ inputs.dockerfile_path }}"
         IMAGE="${{ inputs.image_name }}"
         CONTEXT="${{ inputs.docker_context }}"
-        if [ -f "$DOCKERFILE" ]; then
-          echo "Building Docker image: $IMAGE"
+        if [ -z "$DOCKERFILE" ] || [ ! -f "$DOCKERFILE" ]; then
+          if [ -f "demo-apps/nexus-studio/Dockerfile" ]; then
+            echo "Auto-detected repository demo Dockerfile: demo-apps/nexus-studio/Dockerfile"
+            DOCKERFILE="demo-apps/nexus-studio/Dockerfile"
+            IMAGE="${IMAGE:-nexus-studio-app:latest}"
+            CONTEXT="${CONTEXT:-.}"
+          elif [ -f "Dockerfile" ]; then
+            DOCKERFILE="Dockerfile"
+            IMAGE="${IMAGE:-target-app:latest}"
+            CONTEXT="${CONTEXT:-.}"
+          elif [ -f "app/Dockerfile" ]; then
+            DOCKERFILE="app/Dockerfile"
+            IMAGE="${IMAGE:-vulnapp:latest}"
+            CONTEXT="${CONTEXT:-./app}"
+          fi
+        fi
+        if [ -n "$DOCKERFILE" ] && [ -f "$DOCKERFILE" ]; then
+          echo "Building Docker image: $IMAGE from $DOCKERFILE (context: $CONTEXT)"
           docker build -t "$IMAGE" -f "$DOCKERFILE" "$CONTEXT"
         else
-          echo "No Dockerfile found at $DOCKERFILE, skipping build"
+          echo "No Dockerfile found, skipping build"
         fi
 
     - name: Run Supply Chain Sentinel
@@ -97,27 +113,35 @@ runs:
 
         echo "sarif_path=$SARIF_OUT" >> $GITHUB_OUTPUT
 
-        ERROR_COUNT=$(python -c "
-        import json, sys
-        try:
-            with open('$SARIF_OUT') as f:
-                sarif = json.load(f)
-            results = sarif.get('runs', [{}])[0].get('results', [])
-            errors = sum(1 for r in results if r.get('level') == 'error')
-            print(errors)
-        except Exception:
-            print(0)
-        ")
+    - name: Upload SARIF to GitHub Code Scanning
+      uses: github/codeql-action/upload-sarif@v3
+      if: always()
+      continue-on-error: true
+      with:
+        sarif_file: ${{ inputs.sarif_output }}
+        category: supply-chain-sentinel
+
+    - name: Evaluate security findings and gate CI
+      shell: bash
+      run: |
+        SARIF_OUT="${{ inputs.sarif_output }}"
+        ERROR_COUNT=0
+        if [ -f "$SARIF_OUT" ]; then
+          ERROR_COUNT=$(python -c "
+          import json, sys
+          try:
+              with open('$SARIF_OUT') as f:
+                  sarif = json.load(f)
+              results = sarif.get('runs', [{}])[0].get('results', [])
+              errors = sum(1 for r in results if r.get('level') == 'error')
+              print(errors)
+          except Exception:
+              print(0)
+          ")
+        fi
         echo "error_count=$ERROR_COUNT" >> $GITHUB_OUTPUT
 
         if [ "$ERROR_COUNT" -gt 0 ] && [ "${{ inputs.fail_on_critical }}" == "true" ]; then
           echo "FAIL: $ERROR_COUNT critical security findings detected!"
           exit 1
         fi
-
-    - name: Upload SARIF to GitHub Code Scanning
-      uses: github/codeql-action/upload-sarif@v3
-      if: always()
-      with:
-        sarif_file: ${{ inputs.sarif_output }}
-        category: supply-chain-sentinel

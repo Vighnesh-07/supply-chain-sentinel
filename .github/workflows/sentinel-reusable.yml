@@ -5,12 +5,13 @@ on:
     inputs:
       image_name:
         description: 'Docker image name to scan'
-        required: true
+        required: false
+        default: 'nexus-studio-app:latest'
         type: string
       dockerfile_path:
         description: 'Path to Dockerfile'
         required: false
-        default: 'Dockerfile'
+        default: 'demo-apps/nexus-studio/Dockerfile'
         type: string
       docker_context:
         description: 'Docker build context directory'
@@ -81,12 +82,36 @@ jobs:
           DOCKERFILE="${{ inputs.dockerfile_path }}"
           IMAGE="${{ inputs.image_name }}"
           CONTEXT="${{ inputs.docker_context }}"
-          if [ -f "$DOCKERFILE" ]; then
-            echo "Building Docker image: $IMAGE from $DOCKERFILE"
+
+          # Auto-detect Dockerfile if empty or not found
+          if [ -z "$DOCKERFILE" ] || [ ! -f "$DOCKERFILE" ]; then
+            if [ -f "demo-apps/nexus-studio/Dockerfile" ]; then
+              echo "Auto-detected repository demo Dockerfile: demo-apps/nexus-studio/Dockerfile"
+              DOCKERFILE="demo-apps/nexus-studio/Dockerfile"
+              IMAGE="${IMAGE:-nexus-studio-app:latest}"
+              CONTEXT="${CONTEXT:-.}"
+            elif [ -f "Dockerfile" ]; then
+              DOCKERFILE="Dockerfile"
+              IMAGE="${IMAGE:-target-app:latest}"
+              CONTEXT="${CONTEXT:-.}"
+            elif [ -f "app/Dockerfile" ]; then
+              DOCKERFILE="app/Dockerfile"
+              IMAGE="${IMAGE:-vulnapp:latest}"
+              CONTEXT="${CONTEXT:-./app}"
+            fi
+          fi
+
+          IMAGE="${IMAGE:-nexus-studio-app:latest}"
+          CONTEXT="${CONTEXT:-.}"
+
+          echo "TARGET_IMAGE=$IMAGE" >> $GITHUB_ENV
+          echo "target_image=$IMAGE" >> $GITHUB_OUTPUT
+
+          if [ -n "$DOCKERFILE" ] && [ -f "$DOCKERFILE" ]; then
+            echo "Building Docker image: $IMAGE from $DOCKERFILE (context: $CONTEXT)"
             docker build -t "$IMAGE" -f "$DOCKERFILE" "$CONTEXT"
           else
-            echo "No Dockerfile found at $DOCKERFILE, skipping build"
-            echo "build_skipped=true" >> $GITHUB_OUTPUT
+            echo "No Dockerfile found, will attempt to scan image directly: $IMAGE"
           fi
 
       - name: Run Supply Chain Sentinel
@@ -96,54 +121,66 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           mkdir -p monitor/reports
+          IMAGE="${TARGET_IMAGE:-${{ inputs.image_name || 'nexus-studio-app:latest' }}}"
           INCLUDE_OS_FLAG=""
           if [ "${{ inputs.include_os }}" == "true" ]; then
             INCLUDE_OS_FLAG="--include-os"
           fi
           cd monitor && python monitor.py \
-            --image "${{ inputs.image_name }}" \
+            --image "$IMAGE" \
             --report-dir ./reports \
             --sarif ./reports/results.sarif \
             $INCLUDE_OS_FLAG
 
       - name: Set output paths
         id: set-outputs
+        if: always()
         shell: bash
         run: |
           echo "sarif_path=monitor/reports/results.sarif" >> $GITHUB_OUTPUT
 
-      - name: Check results and fail on critical
-        id: check-results
-        shell: bash
-        run: |
-          ERROR_COUNT=$(python -c "
-          import json, sys
-          try:
-              with open('monitor/reports/results.sarif') as f:
-                  sarif = json.load(f)
-              results = sarif.get('runs', [{}])[0].get('results', [])
-              errors = sum(1 for r in results if r.get('level') == 'error')
-              print(errors)
-          except Exception as e:
-              print(0)
-          ")
-          echo "error_count=$ERROR_COUNT" >> $GITHUB_OUTPUT
-          if [ "$ERROR_COUNT" -gt 0 ] && [ "${{ inputs.fail_on_critical }}" == "true" ]; then
-            echo "FAIL: $ERROR_COUNT critical security findings detected!"
-            exit 1
-          fi
-
       - name: Upload SARIF to GitHub Code Scanning
-        if: always()
+        if: always() && hashFiles('monitor/reports/results.sarif') != ''
         uses: github/codeql-action/upload-sarif@v3
+        continue-on-error: true
         with:
           sarif_file: monitor/reports/results.sarif
           category: supply-chain-sentinel
 
       - name: Upload reports as artifacts
-        if: always()
+        if: always() && hashFiles('monitor/reports/**') != ''
         uses: actions/upload-artifact@v4
         with:
           name: sentinel-reports
           path: monitor/reports/
           retention-days: 30
+
+      - name: Check results and fail on critical
+        id: check-results
+        if: always()
+        shell: bash
+        run: |
+          if [ -f "monitor/reports/results.sarif" ]; then
+            ERROR_COUNT=$(python -c "
+            import json, sys
+            try:
+                with open('monitor/reports/results.sarif') as f:
+                    sarif = json.load(f)
+                results = sarif.get('runs', [{}])[0].get('results', [])
+                errors = sum(1 for r in results if r.get('level') == 'error')
+                print(errors)
+            except Exception:
+                print(0)
+            ")
+            echo "error_count=$ERROR_COUNT" >> $GITHUB_OUTPUT
+            if [ "$ERROR_COUNT" -gt 0 ] && [ "${{ inputs.fail_on_critical }}" == "true" ]; then
+              echo "FAIL: $ERROR_COUNT critical security findings detected!"
+              exit 1
+            fi
+          else
+            echo "No SARIF report generated at monitor/reports/results.sarif"
+            if [ "${{ steps.audit.outcome }}" != "success" ]; then
+              echo "Supply Chain Sentinel audit step failed."
+              exit 1
+            fi
+          fi
