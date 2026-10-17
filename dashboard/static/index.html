@@ -1,0 +1,1494 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Supply Chain Sentinel — SOC Dashboard</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Tailwind Custom Configuration -->
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            sentinel: {
+              950: '#060913',
+              900: '#0B1120',
+              850: '#0F172A',
+              800: '#1E293B',
+              700: '#334155',
+              cyan: '#06B6D4',
+              neon: '#00F2FE',
+              emerald: '#10B981',
+              rose: '#F43F5E',
+              amber: '#F59E0B',
+              purple: '#8B5CF6'
+            }
+          },
+          fontFamily: {
+            mono: ['JetBrains Mono', 'Fira Code', 'Consolas', 'monospace'],
+            sans: ['Inter', 'system-ui', 'sans-serif']
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    /* Custom Scrollbars */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #0b1120; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #06b6d4; }
+    
+    .glow-cyan {
+      box-shadow: 0 0 20px -5px rgba(6, 182, 212, 0.3);
+    }
+    .glow-rose {
+      box-shadow: 0 0 20px -5px rgba(244, 63, 94, 0.3);
+    }
+    .glow-emerald {
+      box-shadow: 0 0 20px -5px rgba(16, 185, 129, 0.3);
+    }
+  </style>
+</head>
+<body class="bg-sentinel-950 text-slate-100 font-sans min-h-screen antialiased selection:bg-cyan-500 selection:text-black">
+
+  <!-- Top Navigation Bar -->
+  <header class="border-b border-sentinel-800 bg-sentinel-900/80 backdrop-blur-md sticky top-0 z-40">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <!-- Brand & Status -->
+      <div class="flex items-center space-x-4">
+        <div class="flex items-center space-x-3">
+          <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center shadow-lg shadow-cyan-500/20">
+            <!-- Shield SVG -->
+            <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+            </svg>
+          </div>
+          <div>
+            <div class="flex items-center space-x-2">
+              <h1 class="text-lg font-bold tracking-tight bg-gradient-to-r from-cyan-400 to-blue-400 bg-clip-text text-transparent">
+                SUPPLY CHAIN SENTINEL
+              </h1>
+              <span class="text-xs font-mono px-2 py-0.5 rounded bg-cyan-950 text-cyan-400 border border-cyan-800">SOC v2.0</span>
+            </div>
+            <p class="text-xs text-slate-400">Zero-Day Dependency Defense & Kernel Runtime Monitor</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Live Target & Controls -->
+      <div class="flex items-center space-x-3">
+        <!-- Target Pill -->
+        <div class="hidden md:flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-sentinel-850 border border-sentinel-800 text-xs">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+          <span class="text-slate-400">Target:</span>
+          <span id="targetNamePill" class="font-mono text-cyan-300 font-semibold">nexus-studio-app:latest</span>
+        </div>
+
+        <!-- Kernel Mode Pill -->
+        <div id="kernelModePill" class="hidden sm:flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-sentinel-850 border border-sentinel-800 text-xs font-mono">
+          <span class="text-slate-400">Mode:</span>
+          <span id="kernelModeText" class="text-amber-400">FALLBACK (proc)</span>
+        </div>
+
+        <!-- Action Buttons -->
+        <button onclick="openScanModal()" class="flex items-center space-x-2 px-3.5 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-black font-semibold text-xs tracking-wide transition shadow-lg shadow-cyan-600/30">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <span>Run Scan</span>
+        </button>
+
+        <button onclick="openUploadModal()" class="hidden sm:flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-sentinel-800 hover:bg-sentinel-700 text-slate-200 text-xs border border-sentinel-700 transition">
+          <svg class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+          </svg>
+          <span>Import SBOM</span>
+        </button>
+
+        <!-- Refresh Button -->
+        <button onclick="refreshDashboard()" title="Refresh Data" class="p-2 rounded-lg bg-sentinel-850 hover:bg-sentinel-800 text-slate-300 border border-sentinel-800 transition">
+          <svg id="refreshIcon" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex space-x-8 text-sm font-medium border-t border-sentinel-800/60 overflow-x-auto">
+      <button onclick="switchTab('overview')" id="tab-overview" class="py-3 px-1 border-b-2 border-cyan-400 text-cyan-400 flex items-center space-x-2 whitespace-nowrap">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+        <span>SOC Overview</span>
+      </button>
+
+      <button onclick="switchTab('dependencies')" id="tab-dependencies" class="py-3 px-1 border-b-2 border-transparent text-slate-400 hover:text-slate-200 flex items-center space-x-2 whitespace-nowrap">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
+        <span>Dependencies & Vulns</span>
+        <span id="threatBadgeCount" class="ml-1.5 px-2 py-0.2 rounded-full text-xs bg-rose-950 text-rose-400 border border-rose-800 hidden">0</span>
+      </button>
+
+      <button onclick="switchTab('telemetry')" id="tab-telemetry" class="py-3 px-1 border-b-2 border-transparent text-slate-400 hover:text-slate-200 flex items-center space-x-2 whitespace-nowrap">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+        <span>Live Runtime & eBPF</span>
+      </button>
+
+      <button onclick="switchTab('containers')" id="tab-containers" class="py-3 px-1 border-b-2 border-transparent text-slate-400 hover:text-slate-200 flex items-center space-x-2 whitespace-nowrap">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
+        <span>Containers & Fleet</span>
+      </button>
+
+      <button onclick="switchTab('reports')" id="tab-reports" class="py-3 px-1 border-b-2 border-transparent text-slate-400 hover:text-slate-200 flex items-center space-x-2 whitespace-nowrap">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+        <span>Reports & SARIF</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Content Container -->
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+
+    <!-- ═════════════════════════════════════════════════════════ -->
+    <!-- TAB 1: SOC OVERVIEW -->
+    <!-- ═════════════════════════════════════════════════════════ -->
+    <div id="content-overview" class="space-y-6">
+      
+      <!-- Metrics Stat Cards Row -->
+      <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        <!-- Security Score Card -->
+        <div class="bg-sentinel-900 border border-sentinel-800 rounded-xl p-4 flex flex-col justify-between">
+          <div class="flex items-center justify-between">
+            <span class="text-xs uppercase tracking-wider text-slate-400 font-medium">Health Score</span>
+            <span id="healthScoreDot" class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
+          </div>
+          <div class="my-2">
+            <span id="healthScoreValue" class="text-3xl font-extrabold font-mono text-emerald-400">92</span>
+            <span class="text-xs text-slate-400">/ 100</span>
+          </div>
+          <div class="w-full bg-sentinel-800 rounded-full h-1.5 overflow-hidden">
+            <div id="healthScoreBar" class="bg-emerald-400 h-1.5 rounded-full" style="width: 92%"></div>
+          </div>
+        </div>
+
+        <!-- Scanned Packages Card -->
+        <div class="bg-sentinel-900 border border-sentinel-800 rounded-xl p-4 flex flex-col justify-between">
+          <div class="flex items-center justify-between">
+            <span class="text-xs uppercase tracking-wider text-slate-400 font-medium">Scanned Pkgs</span>
+            <svg class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
+          </div>
+          <div class="my-2">
+            <span id="totalPackagesCount" class="text-3xl font-extrabold font-mono text-cyan-400">--</span>
+          </div>
+          <span class="text-xs text-slate-500 font-mono">Multi-Ecosystem</span>
+        </div>
+
+        <!-- Critical / High Vulns Card -->
+        <div class="bg-sentinel-900 border border-sentinel-800 rounded-xl p-4 flex flex-col justify-between">
+          <div class="flex items-center justify-between">
+            <span class="text-xs uppercase tracking-wider text-slate-400 font-medium">Critical / High</span>
+            <svg class="w-4 h-4 text-rose-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+          </div>
+          <div class="my-2 flex items-baseline space-x-2">
+            <span id="criticalVulnsCount" class="text-3xl font-extrabold font-mono text-rose-400">--</span>
+            <span id="highVulnsCount" class="text-sm font-bold font-mono text-amber-400">/ -- High</span>
+          </div>
+          <span class="text-xs text-slate-500 font-mono">FIRST.org Decoded</span>
+        </div>
+
+        <!-- Malicious Implants Card -->
+        <div class="bg-sentinel-900 border border-sentinel-800 rounded-xl p-4 flex flex-col justify-between">
+          <div class="flex items-center justify-between">
+            <span class="text-xs uppercase tracking-wider text-slate-400 font-medium">Malware Implants</span>
+            <svg class="w-4 h-4 text-rose-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/></svg>
+          </div>
+          <div class="my-2">
+            <span id="maliciousCount" class="text-3xl font-extrabold font-mono text-rose-400">--</span>
+          </div>
+          <span class="text-xs text-slate-500 font-mono">Zero-Day & Backdoors</span>
+        </div>
+
+        <!-- Secrets & Wallets Card -->
+        <div class="bg-sentinel-900 border border-sentinel-800 rounded-xl p-4 flex flex-col justify-between">
+          <div class="flex items-center justify-between">
+            <span class="text-xs uppercase tracking-wider text-slate-400 font-medium">Secrets & Wallets</span>
+            <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/></svg>
+          </div>
+          <div class="my-2 flex items-baseline space-x-2">
+            <span id="secretsCount" class="text-3xl font-extrabold font-mono text-amber-400">--</span>
+            <span id="walletsCount" class="text-xs font-mono text-slate-400">+ -- Crypto</span>
+          </div>
+          <span class="text-xs text-slate-500 font-mono">Shannon &gt; 4.5 Entropy</span>
+        </div>
+
+        <!-- Active Containers Card -->
+        <div class="bg-sentinel-900 border border-sentinel-800 rounded-xl p-4 flex flex-col justify-between">
+          <div class="flex items-center justify-between">
+            <span class="text-xs uppercase tracking-wider text-slate-400 font-medium">Active Fleet</span>
+            <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"/></svg>
+          </div>
+          <div class="my-2">
+            <span id="containersCount" class="text-3xl font-extrabold font-mono text-emerald-400">--</span>
+          </div>
+          <span class="text-xs text-slate-500 font-mono">Monitored Runtime</span>
+        </div>
+      </div>
+
+      <!-- Charts Row -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Severity Doughnut Chart -->
+        <div class="bg-sentinel-900 border border-sentinel-800 rounded-xl p-5 flex flex-col">
+          <div class="flex items-center justify-between mb-4">
+            <h2 class="text-sm font-semibold tracking-wide text-slate-200">Vulnerability Severity Distribution</h2>
+            <span class="text-xs font-mono text-slate-500">FIRST.org CVSS v3.1</span>
+          </div>
+          <div class="relative flex-1 flex items-center justify-center min-h-[220px]">
+            <canvas id="severityChart"></canvas>
+          </div>
+        </div>
+
+        <!-- Ecosystem Breakdown Chart -->
+        <div class="bg-sentinel-900 border border-sentinel-800 rounded-xl p-5 flex flex-col">
+          <div class="flex items-center justify-between mb-4">
+            <h2 class="text-sm font-semibold tracking-wide text-slate-200">Dependencies by Ecosystem</h2>
+            <span class="text-xs font-mono text-slate-500">CycloneDX Multi-PURL</span>
+          </div>
+          <div class="relative flex-1 flex items-center justify-center min-h-[220px]">
+            <canvas id="ecosystemChart"></canvas>
+          </div>
+        </div>
+
+        <!-- Defense Pipeline Architecture Summary Card -->
+        <div class="bg-sentinel-900 border border-sentinel-800 rounded-xl p-5 flex flex-col justify-between">
+          <div>
+            <div class="flex items-center justify-between mb-3">
+              <h2 class="text-sm font-semibold tracking-wide text-slate-200">Sentinel Multi-Layer Pipeline</h2>
+              <span class="text-xs px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800 font-mono">ACTIVE</span>
+            </div>
+            <div class="space-y-2.5 text-xs">
+              <div class="flex items-center justify-between p-2 rounded bg-sentinel-850 border border-sentinel-800">
+                <span class="text-slate-300 font-medium">L1: SBOM Ingestion (Syft 8-Eco)</span>
+                <span class="font-mono text-emerald-400">[PASS]</span>
+              </div>
+              <div class="flex items-center justify-between p-2 rounded bg-sentinel-850 border border-sentinel-800">
+                <span class="text-slate-300 font-medium">L2: Version Drift Registry API</span>
+                <span class="font-mono text-cyan-400">[MONITORED]</span>
+              </div>
+              <div class="flex items-center justify-between p-2 rounded bg-sentinel-850 border border-sentinel-800">
+                <span class="text-slate-300 font-medium">L3: Multi-Threat Intel (OSV/GHSA)</span>
+                <span class="font-mono text-emerald-400">[PASS]</span>
+              </div>
+              <div class="flex items-center justify-between p-2 rounded bg-sentinel-850 border border-sentinel-800">
+                <span class="text-slate-300 font-medium">L4: Tree-sitter AST & Secret Scanner</span>
+                <span class="font-mono text-amber-400">[IOCS FLAGGED]</span>
+              </div>
+              <div class="flex items-center justify-between p-2 rounded bg-sentinel-850 border border-sentinel-800">
+                <span class="text-slate-300 font-medium">L5: Gemini AI Semantic Funnel</span>
+                <span class="font-mono text-purple-400">[VERIFIED]</span>
+              </div>
+              <div class="flex items-center justify-between p-2 rounded bg-sentinel-850 border border-sentinel-800">
+                <span class="text-slate-300 font-medium">L6: eBPF Kernel Syscall & Network HIDS</span>
+                <span id="pipelineEbpfStatus" class="font-mono text-emerald-400">[ATTACHED]</span>
+              </div>
+            </div>
+          </div>
+          <div class="pt-3 border-t border-sentinel-800 text-xs text-slate-500 flex justify-between font-mono">
+            <span>Scan Timestamp:</span>
+            <span id="scanTimestamp" class="text-slate-400">--</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Top Threats Spotlight Table -->
+      <div class="bg-sentinel-900 border border-sentinel-800 rounded-xl overflow-hidden">
+        <div class="px-5 py-4 border-b border-sentinel-800 flex items-center justify-between">
+          <div>
+            <h2 class="text-sm font-semibold tracking-wide text-slate-100 flex items-center space-x-2">
+              <span class="w-2 h-2 rounded-full bg-rose-500"></span>
+              <span>High-Priority Security Findings & Malicious Packages</span>
+            </h2>
+            <p class="text-xs text-slate-400 mt-0.5">Dependencies flagged by AST, Secrets, Threat Intel, or Google Gemini AI</p>
+          </div>
+          <button onclick="switchTab('dependencies')" class="text-xs text-cyan-400 hover:text-cyan-300 font-medium flex items-center space-x-1">
+            <span>View All Packages</span>
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+          </button>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs">
+            <thead class="bg-sentinel-850 text-slate-400 uppercase font-mono tracking-wider border-b border-sentinel-800">
+              <tr>
+                <th class="py-3 px-4">Status</th>
+                <th class="py-3 px-4">Package & Ecosystem</th>
+                <th class="py-3 px-4">Severity & CVSS</th>
+                <th class="py-3 px-4">Advisories / CVEs</th>
+                <th class="py-3 px-4">Forensic Indicators</th>
+                <th class="py-3 px-4">AI Verdict</th>
+                <th class="py-3 px-4 text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody id="topThreatsTableBody" class="divide-y divide-sentinel-800/60 font-sans">
+              <!-- Dynamically populated -->
+              <tr>
+                <td colspan="7" class="py-8 text-center text-slate-500">Loading threat intelligence data...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ═════════════════════════════════════════════════════════ -->
+    <!-- TAB 2: DEPENDENCIES & VULNERABILITIES -->
+    <!-- ═════════════════════════════════════════════════════════ -->
+    <div id="content-dependencies" class="hidden space-y-4">
+      <!-- Filter Bar -->
+      <div class="bg-sentinel-900 border border-sentinel-800 rounded-xl p-4 flex flex-wrap gap-3 items-center justify-between">
+        <div class="flex flex-wrap items-center gap-3 flex-1">
+          <!-- Search Input -->
+          <div class="relative min-w-[240px] flex-1 max-w-md">
+            <svg class="w-4 h-4 text-slate-400 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+            </svg>
+            <input type="text" id="pkgSearchInput" oninput="debounceFilterPackages()" placeholder="Search package name, CVE, or threat source..." 
+                   class="w-full pl-9 pr-3 py-1.5 rounded-lg bg-sentinel-850 border border-sentinel-800 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500">
+          </div>
+
+          <!-- Ecosystem Filter Dropdown -->
+          <select id="ecoFilterSelect" onchange="filterPackages()" class="px-3 py-1.5 rounded-lg bg-sentinel-850 border border-sentinel-800 text-xs text-slate-300 focus:outline-none focus:border-cyan-500">
+            <option value="ALL">All Ecosystems</option>
+            <option value="npm">npm</option>
+            <option value="PyPI">PyPI</option>
+            <option value="Go">Go</option>
+            <option value="RubyGems">RubyGems</option>
+            <option value="Maven">Maven</option>
+            <option value="crates.io">crates.io</option>
+          </select>
+
+          <!-- Severity Filter Dropdown -->
+          <select id="sevFilterSelect" onchange="filterPackages()" class="px-3 py-1.5 rounded-lg bg-sentinel-850 border border-sentinel-800 text-xs text-slate-300 focus:outline-none focus:border-cyan-500">
+            <option value="ALL">All Severities</option>
+            <option value="CRITICAL">CRITICAL</option>
+            <option value="HIGH">HIGH</option>
+            <option value="MEDIUM">MEDIUM</option>
+            <option value="LOW">LOW</option>
+            <option value="NONE">CLEAN / NONE</option>
+          </select>
+
+          <!-- Threats Only Toggle -->
+          <label class="flex items-center space-x-2 text-xs text-slate-300 cursor-pointer select-none">
+            <input type="checkbox" id="threatsOnlyToggle" onchange="filterPackages()" class="rounded bg-sentinel-850 border-sentinel-800 text-cyan-500 focus:ring-0">
+            <span>Threats Only</span>
+          </label>
+        </div>
+
+        <div class="text-xs text-slate-400 font-mono">
+          Showing <span id="filteredPkgCount" class="text-cyan-400 font-bold">0</span> of <span id="totalPkgCountDisplay">0</span> packages
+        </div>
+      </div>
+
+      <!-- Main Packages Table -->
+      <div class="bg-sentinel-900 border border-sentinel-800 rounded-xl overflow-hidden shadow-sm">
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs">
+            <thead class="bg-sentinel-850 text-slate-400 uppercase font-mono tracking-wider border-b border-sentinel-800">
+              <tr>
+                <th class="py-3 px-4">Status</th>
+                <th class="py-3 px-4">Package & Ecosystem</th>
+                <th class="py-3 px-4">Installed vs Latest</th>
+                <th class="py-3 px-4">Severity & CVSS</th>
+                <th class="py-3 px-4">CVEs & Advisories</th>
+                <th class="py-3 px-4">Detected IOCs</th>
+                <th class="py-3 px-4">AI Verdict</th>
+                <th class="py-3 px-4 text-right">Inspect</th>
+              </tr>
+            </thead>
+            <tbody id="allPackagesTableBody" class="divide-y divide-sentinel-800/60 font-sans">
+              <!-- Dynamically populated -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═════════════════════════════════════════════════════════ -->
+    <!-- TAB 3: LIVE RUNTIME & eBPF -->
+    <!-- ═════════════════════════════════════════════════════════ -->
+    <div id="content-telemetry" class="hidden space-y-6">
+      <!-- Status Card -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="bg-sentinel-900 border border-sentinel-800 rounded-xl p-4 flex items-center space-x-4">
+          <div class="w-10 h-10 rounded-lg bg-emerald-950 border border-emerald-800 flex items-center justify-center text-emerald-400">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+          </div>
+          <div>
+            <span class="text-xs text-slate-400 uppercase font-mono">Kernel Hook Status</span>
+            <div id="ebpfStatusDetail" class="text-sm font-bold text-slate-200">Active (Fallback /proc/net Poller)</div>
+          </div>
+        </div>
+
+        <div class="bg-sentinel-900 border border-sentinel-800 rounded-xl p-4 flex items-center space-x-4">
+          <div class="w-10 h-10 rounded-lg bg-cyan-950 border border-cyan-800 flex items-center justify-center text-cyan-400">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+          </div>
+          <div>
+            <span class="text-xs text-slate-400 uppercase font-mono">5-Layer Evasion Engine</span>
+            <div class="text-sm font-bold text-slate-200">L1-L5 Process Escapes & DNS Monitored</div>
+          </div>
+        </div>
+
+        <div class="bg-sentinel-900 border border-sentinel-800 rounded-xl p-4 flex items-center space-x-4">
+          <div class="w-10 h-10 rounded-lg bg-rose-950 border border-rose-800 flex items-center justify-center text-rose-400">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          </div>
+          <div>
+            <span class="text-xs text-slate-400 uppercase font-mono">Telemetry Alert Stream</span>
+            <div id="telemetryAlertCount" class="text-sm font-bold text-rose-400">0 Alerts Logged</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Active Container Sockets Table -->
+      <div class="bg-sentinel-900 border border-sentinel-800 rounded-xl overflow-hidden">
+        <div class="px-5 py-3 border-b border-sentinel-800 flex items-center justify-between">
+          <h2 class="text-sm font-semibold tracking-wide text-slate-200 flex items-center space-x-2">
+            <svg class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0"/></svg>
+            <span>Live Container Sockets & Network Attribution</span>
+          </h2>
+          <span class="text-xs font-mono text-slate-500">Real-time /proc/net/tcp inspection</span>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs">
+            <thead class="bg-sentinel-850 text-slate-400 uppercase font-mono tracking-wider border-b border-sentinel-800">
+              <tr>
+                <th class="py-2.5 px-4">Protocol</th>
+                <th class="py-2.5 px-4">Local Bind</th>
+                <th class="py-2.5 px-4">Remote Target</th>
+                <th class="py-2.5 px-4">Socket State</th>
+                <th class="py-2.5 px-4">Risk Classification</th>
+                <th class="py-2.5 px-4">Attributed Package</th>
+              </tr>
+            </thead>
+            <tbody id="socketsTableBody" class="divide-y divide-sentinel-800/60 font-mono">
+              <tr>
+                <td colspan="6" class="py-6 text-center text-slate-500 font-sans">No active outbound external sockets detected.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Live Terminal Alert Stream -->
+      <div class="bg-sentinel-900 border border-sentinel-800 rounded-xl overflow-hidden">
+        <div class="px-5 py-3 border-b border-sentinel-800 flex items-center justify-between bg-sentinel-850">
+          <div class="flex items-center space-x-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-rose-500 animate-ping"></span>
+            <h2 class="text-xs font-bold uppercase tracking-wider font-mono text-slate-300">Live HIDS Security Alert Feed</h2>
+          </div>
+          <button onclick="fetchTelemetry()" class="text-xs text-cyan-400 hover:text-cyan-300 font-mono">Refresh Log</button>
+        </div>
+        <div id="alertsConsole" class="p-4 bg-black font-mono text-xs text-slate-300 h-64 overflow-y-auto space-y-1">
+          <div class="text-slate-500">[SYSTEM] Live alert feed connected. Listening for process escapes and outbound C2 callbacks...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═════════════════════════════════════════════════════════ -->
+    <!-- TAB 4: CONTAINERS & FLEET -->
+    <!-- ═════════════════════════════════════════════════════════ -->
+    <div id="content-containers" class="hidden space-y-6">
+      <div class="flex items-center justify-between">
+        <div>
+          <h2 class="text-base font-bold text-slate-200">Discovered Container Fleet</h2>
+          <p class="text-xs text-slate-400">Live Docker daemon introspection and language runtime probing</p>
+        </div>
+        <button onclick="fetchContainers()" class="px-3 py-1.5 rounded-lg bg-sentinel-850 hover:bg-sentinel-800 text-xs border border-sentinel-800 text-slate-300 font-mono">
+          Rediscover Containers
+        </button>
+      </div>
+
+      <div id="containersGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <!-- Dynamically populated container cards -->
+      </div>
+    </div>
+
+    <!-- ═════════════════════════════════════════════════════════ -->
+    <!-- TAB 5: REPORTS & SARIF -->
+    <!-- ═════════════════════════════════════════════════════════ -->
+    <div id="content-reports" class="hidden space-y-6">
+      <div class="flex items-center justify-between">
+        <div>
+          <h2 class="text-base font-bold text-slate-200">Generated Compliance Reports & SARIF</h2>
+          <p class="text-xs text-slate-400">Download Excel audit workbooks, OASIS SARIF 2.1.0 records, and JSON exports</p>
+        </div>
+        <button onclick="fetchReports()" class="px-3 py-1.5 rounded-lg bg-sentinel-850 hover:bg-sentinel-800 text-xs border border-sentinel-800 text-slate-300 font-mono">
+          Refresh List
+        </button>
+      </div>
+
+      <div class="bg-sentinel-900 border border-sentinel-800 rounded-xl overflow-hidden">
+        <table class="w-full text-left text-xs">
+          <thead class="bg-sentinel-850 text-slate-400 uppercase font-mono tracking-wider border-b border-sentinel-800">
+            <tr>
+              <th class="py-3 px-4">Filename</th>
+              <th class="py-3 px-4">Format</th>
+              <th class="py-3 px-4">File Size</th>
+              <th class="py-3 px-4">Generated Date</th>
+              <th class="py-3 px-4 text-right">Download</th>
+            </tr>
+          </thead>
+          <tbody id="reportsTableBody" class="divide-y divide-sentinel-800/60 font-mono">
+            <!-- Dynamically populated -->
+          </tbody>
+        </table>
+      </div>
+
+      <!-- SARIF CI/CD Integration Callout -->
+      <div class="bg-gradient-to-r from-sentinel-900 to-sentinel-850 border border-cyan-900/40 rounded-xl p-5">
+        <div class="flex items-start space-x-3">
+          <div class="w-8 h-8 rounded-lg bg-cyan-950 border border-cyan-800 flex items-center justify-center text-cyan-400 flex-shrink-0">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          </div>
+          <div>
+            <h3 class="text-sm font-bold text-slate-200">GitHub Code Scanning (SARIF 2.1.0) Integration</h3>
+            <p class="text-xs text-slate-400 mt-1">
+              Every Sentinel audit automatically exports an OASIS SARIF 2.1.0 compliant file containing rule categories <code class="text-cyan-400">SSC001</code> to <code class="text-cyan-400">SSC008</code>. 
+              These reports feed directly into the GitHub Security tab, blocking pull requests when critical findings are detected.
+            </p>
+            <div class="mt-3 flex items-center space-x-2 font-mono text-xs text-slate-400">
+              <span class="text-slate-500">$</span>
+              <span class="text-slate-300">gh code-scanning upload-results --sarif monitor/reports/results.sarif</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- ═════════════════════════════════════════════════════════ -->
+  <!-- MODAL: DEEP PACKAGE INSPECTION FORENSICS -->
+  <!-- ═════════════════════════════════════════════════════════ -->
+  <div id="inspectModal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-sentinel-900 border border-sentinel-750 w-full max-w-3xl rounded-2xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
+      <!-- Modal Header -->
+      <div class="px-6 py-4 border-b border-sentinel-800 flex items-center justify-between bg-sentinel-850">
+        <div>
+          <div class="flex items-center space-x-3">
+            <h3 id="modalPkgName" class="text-base font-bold text-cyan-400 font-mono">package-name</h3>
+            <span id="modalEcoBadge" class="px-2 py-0.5 rounded text-xs font-mono bg-cyan-950 text-cyan-400 border border-cyan-800">npm</span>
+            <span id="modalSeverityBadge" class="px-2 py-0.5 rounded text-xs font-bold font-mono bg-rose-950 text-rose-400 border border-rose-800">CRITICAL</span>
+          </div>
+          <p id="modalPkgVersion" class="text-xs text-slate-400 font-mono mt-1">Version: 1.0.0</p>
+        </div>
+        <button onclick="closeInspectModal()" class="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-sentinel-700">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+
+      <!-- Modal Body -->
+      <div class="p-6 overflow-y-auto space-y-5 text-xs">
+        
+        <!-- AI Semantic Verdict Box -->
+        <div class="p-4 rounded-xl bg-purple-950/40 border border-purple-800/60">
+          <div class="flex items-center space-x-2 text-purple-300 font-bold mb-1">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/></svg>
+            <span>Google Gemini AI Semantic Verdict: <span id="modalAiVerdict" class="uppercase font-mono">MALICIOUS</span></span>
+          </div>
+          <p id="modalAiSummary" class="text-slate-300 leading-relaxed font-sans">
+            AI analysis summary will appear here.
+          </p>
+        </div>
+
+        <!-- Risk Summary -->
+        <div>
+          <h4 class="font-bold text-slate-300 uppercase font-mono text-[11px] mb-1">Static Forensic Summary</h4>
+          <p id="modalRiskSummary" class="text-slate-300 font-mono bg-sentinel-850 p-3 rounded-lg border border-sentinel-800">
+            No behavioral indicators flagged.
+          </p>
+        </div>
+
+        <!-- Threat Sources / Databases -->
+        <div>
+          <h4 class="font-bold text-slate-300 uppercase font-mono text-[11px] mb-1">Threat Intelligence Matches</h4>
+          <ul id="modalThreatSourcesList" class="space-y-1 text-slate-300 font-mono bg-sentinel-850 p-3 rounded-lg border border-sentinel-800">
+            <li>None</li>
+          </ul>
+        </div>
+
+        <!-- AST Code IOCs -->
+        <div>
+          <h4 class="font-bold text-slate-300 uppercase font-mono text-[11px] mb-1">AST Static Analysis Findings (Tree-sitter)</h4>
+          <ul id="modalAstList" class="space-y-1 text-slate-300 font-mono bg-sentinel-850 p-3 rounded-lg border border-sentinel-800 max-h-36 overflow-y-auto">
+            <li>No AST anomalies.</li>
+          </ul>
+        </div>
+
+        <!-- High-Entropy Secrets & Crypto Wallets -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <h4 class="font-bold text-slate-300 uppercase font-mono text-[11px] mb-1">Extracted Secrets & API Keys</h4>
+            <ul id="modalSecretsList" class="space-y-1 text-amber-300 font-mono bg-sentinel-850 p-3 rounded-lg border border-sentinel-800">
+              <li>None</li>
+            </ul>
+          </div>
+          <div>
+            <h4 class="font-bold text-slate-300 uppercase font-mono text-[11px] mb-1">Cryptocurrency Wallets</h4>
+            <ul id="modalWalletsList" class="space-y-1 text-amber-300 font-mono bg-sentinel-850 p-3 rounded-lg border border-sentinel-800">
+              <li>None</li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- Outbound IPs & URLs -->
+        <div>
+          <h4 class="font-bold text-slate-300 uppercase font-mono text-[11px] mb-1">Hardcoded C2 IPs & URLs</h4>
+          <ul id="modalNetworkList" class="space-y-1 text-cyan-300 font-mono bg-sentinel-850 p-3 rounded-lg border border-sentinel-800">
+            <li>None</li>
+          </ul>
+        </div>
+
+      </div>
+
+      <!-- Modal Footer -->
+      <div class="px-6 py-3 border-t border-sentinel-800 bg-sentinel-850 flex justify-end">
+        <button onclick="closeInspectModal()" class="px-4 py-1.5 rounded-lg bg-sentinel-700 hover:bg-sentinel-600 text-slate-200 text-xs font-semibold">
+          Close Inspection
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═════════════════════════════════════════════════════════ -->
+  <!-- MODAL: TRIGGER ON-DEMAND SCAN -->
+  <!-- ═════════════════════════════════════════════════════════ -->
+  <div id="scanModal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-sentinel-900 border border-sentinel-800 w-full max-w-xl rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+      <div class="px-6 py-4 border-b border-sentinel-800 flex items-center justify-between bg-sentinel-850">
+        <h3 class="text-sm font-bold text-slate-100 flex items-center space-x-2">
+          <svg class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/></svg>
+          <span>Trigger On-Demand Audit Scan</span>
+        </h3>
+        <button onclick="closeScanModal()" class="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-sentinel-700">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+
+      <div class="p-6 space-y-4 text-xs">
+        <div>
+          <label class="block text-slate-300 font-semibold mb-1">Target Docker Image or Container Name</label>
+          <input type="text" id="scanTargetInput" value="nexus-studio-app:latest" 
+                 class="w-full px-3 py-2 rounded-lg bg-sentinel-850 border border-sentinel-800 text-slate-100 font-mono focus:outline-none focus:border-cyan-500">
+        </div>
+
+        <label class="flex items-center space-x-2 text-slate-300 cursor-pointer">
+          <input type="checkbox" id="scanIncludeOsCheckbox" class="rounded bg-sentinel-850 border-sentinel-800 text-cyan-500 focus:ring-0">
+          <span>Include OS packages (dpkg, apk, rpm) in scan</span>
+        </label>
+
+        <!-- Live Scan Terminal Output -->
+        <div id="scanConsoleWrapper" class="hidden space-y-2">
+          <div class="flex items-center justify-between text-slate-400 font-mono text-[11px]">
+            <span>Audit Execution Stream</span>
+            <span id="scanStatusIndicator" class="text-cyan-400 animate-pulse font-bold">RUNNING...</span>
+          </div>
+          <div id="scanConsole" class="p-3 bg-black rounded-lg border border-sentinel-800 font-mono text-[11px] text-slate-300 h-44 overflow-y-auto space-y-0.5">
+            <div>Initializing job...</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="px-6 py-3 border-t border-sentinel-800 bg-sentinel-850 flex justify-between items-center">
+        <button onclick="closeScanModal()" class="px-3 py-1.5 rounded-lg bg-sentinel-800 hover:bg-sentinel-700 text-slate-300 text-xs font-semibold">
+          Close
+        </button>
+        <button id="startScanBtn" onclick="executeScan()" class="px-4 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-black text-xs font-bold transition shadow-lg shadow-cyan-600/30">
+          Execute Audit
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═════════════════════════════════════════════════════════ -->
+  <!-- MODAL: UPLOAD SBOM OR SARIF -->
+  <!-- ═════════════════════════════════════════════════════════ -->
+  <div id="uploadModal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-sentinel-900 border border-sentinel-800 w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+      <div class="px-6 py-4 border-b border-sentinel-800 flex items-center justify-between bg-sentinel-850">
+        <h3 class="text-sm font-bold text-slate-100 flex items-center space-x-2">
+          <svg class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+          <span>Import CycloneDX SBOM or SARIF 2.1.0</span>
+        </h3>
+        <button onclick="closeUploadModal()" class="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-sentinel-700">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+
+      <div class="p-6 space-y-4 text-xs">
+        <p class="text-slate-400 leading-relaxed">
+          Upload any <code class="text-cyan-400">bom.json</code> (CycloneDX JSON) or <code class="text-cyan-400">results.sarif</code> (OASIS SARIF 2.1.0) report to analyze and visualize it instantly in the Sentinel SOC console.
+        </p>
+
+        <div class="border-2 border-dashed border-sentinel-800 hover:border-cyan-500 rounded-xl p-6 text-center cursor-pointer transition" onclick="document.getElementById('sbomFileInput').click()">
+          <input type="file" id="sbomFileInput" accept=".json,.sarif" class="hidden" onchange="handleFileSelected(event)">
+          <svg class="w-8 h-8 text-slate-500 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+          <div id="selectedFileName" class="text-slate-300 font-medium">Click to select .json or .sarif file</div>
+          <div class="text-[11px] text-slate-500 mt-1">Supports CycloneDX v1.4+ and SARIF 2.1.0</div>
+        </div>
+
+        <div id="uploadFeedback" class="hidden p-3 rounded-lg text-xs font-mono"></div>
+      </div>
+
+      <div class="px-6 py-3 border-t border-sentinel-800 bg-sentinel-850 flex justify-between items-center">
+        <button onclick="closeUploadModal()" class="px-3 py-1.5 rounded-lg bg-sentinel-800 hover:bg-sentinel-700 text-slate-300 text-xs font-semibold">
+          Cancel
+        </button>
+        <button id="uploadBtn" onclick="submitUpload()" disabled class="px-4 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-black text-xs font-bold transition">
+          Upload & Visualize
+        </button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ═════════════════════════════════════════════════════════ -->
+  <!-- CLIENT LOGIC (Vanilla JS + Chart.js) -->
+  <!-- ═════════════════════════════════════════════════════════ -->
+  <script>
+    // Application State
+    let currentTab = 'overview';
+    let allPackages = [];
+    let severityChartInstance = null;
+    let ecosystemChartInstance = null;
+    let selectedUploadFile = null;
+    let scanJobPollingInterval = null;
+
+    // Initialize on page load
+    document.addEventListener('DOMContentLoaded', () => {
+      initCharts();
+      refreshDashboard();
+      // Auto-poll telemetry every 15s if telemetry tab is active
+      setInterval(() => {
+        if (currentTab === 'telemetry') {
+          fetchTelemetry();
+        }
+      }, 15000);
+    });
+
+    // Tab Switching
+    function switchTab(tabId) {
+      currentTab = tabId;
+      const tabs = ['overview', 'dependencies', 'telemetry', 'containers', 'reports'];
+      tabs.forEach(t => {
+        const btn = document.getElementById(`tab-${t}`);
+        const content = document.getElementById(`content-${t}`);
+        if (t === tabId) {
+          btn.className = 'py-3 px-1 border-b-2 border-cyan-400 text-cyan-400 flex items-center space-x-2 whitespace-nowrap font-medium';
+          content.classList.remove('hidden');
+        } else {
+          btn.className = 'py-3 px-1 border-b-2 border-transparent text-slate-400 hover:text-slate-200 flex items-center space-x-2 whitespace-nowrap font-medium';
+          content.classList.add('hidden');
+        }
+      });
+
+      // Lazy load tab data
+      if (tabId === 'telemetry') fetchTelemetry();
+      if (tabId === 'containers') fetchContainers();
+      if (tabId === 'reports') fetchReports();
+    }
+
+    // Refresh All Core Data
+    async function refreshDashboard() {
+      const refreshIcon = document.getElementById('refreshIcon');
+      refreshIcon.classList.add('animate-spin');
+      try {
+        await Promise.all([
+          fetchOverview(),
+          fetchPackages()
+        ]);
+      } catch (err) {
+        console.error('Error refreshing dashboard:', err);
+      } finally {
+        setTimeout(() => refreshIcon.classList.remove('animate-spin'), 600);
+      }
+    }
+
+    // Fetch Overview Metrics
+    async function fetchOverview() {
+      try {
+        const res = await fetch('/api/overview');
+        if (!res.ok) throw new Error('Failed to fetch overview');
+        const data = await res.json();
+
+        // Update Target & Timestamp
+        document.getElementById('targetNamePill').textContent = data.target || 'nexus-studio-app:latest';
+        const dateObj = new Date(data.timestamp);
+        document.getElementById('scanTimestamp').textContent = dateObj.toLocaleString();
+
+        // Update Health Score
+        const score = data.health_score ?? 100;
+        const scoreElem = document.getElementById('healthScoreValue');
+        const barElem = document.getElementById('healthScoreBar');
+        const dotElem = document.getElementById('healthScoreDot');
+        scoreElem.textContent = score;
+        barElem.style.width = `${score}%`;
+
+        if (score >= 80) {
+          scoreElem.className = 'text-3xl font-extrabold font-mono text-emerald-400';
+          barElem.className = 'bg-emerald-400 h-1.5 rounded-full';
+          dotElem.className = 'w-2.5 h-2.5 rounded-full bg-emerald-400';
+        } else if (score >= 50) {
+          scoreElem.className = 'text-3xl font-extrabold font-mono text-amber-400';
+          barElem.className = 'bg-amber-400 h-1.5 rounded-full';
+          dotElem.className = 'w-2.5 h-2.5 rounded-full bg-amber-400';
+        } else {
+          scoreElem.className = 'text-3xl font-extrabold font-mono text-rose-400';
+          barElem.className = 'bg-rose-400 h-1.5 rounded-full';
+          dotElem.className = 'w-2.5 h-2.5 rounded-full bg-rose-400';
+        }
+
+        // Metrics Counters
+        document.getElementById('totalPackagesCount').textContent = data.total_packages || 0;
+        document.getElementById('criticalVulnsCount').textContent = data.critical_count || 0;
+        document.getElementById('highVulnsCount').textContent = `/ ${data.high_count || 0} High`;
+        document.getElementById('maliciousCount').textContent = data.malicious_count || 0;
+        document.getElementById('secretsCount').textContent = data.secrets_count || 0;
+        document.getElementById('walletsCount').textContent = `+ ${data.wallets_count || 0} Crypto`;
+
+        // Kernel mode status
+        const caps = data.ebpf_capabilities || {};
+        const modeText = document.getElementById('kernelModeText');
+        const pipelineEbpfStatus = document.getElementById('pipelineEbpfStatus');
+        const ebpfDetail = document.getElementById('ebpfStatusDetail');
+
+        if (caps.mode === 'ebpf') {
+          modeText.textContent = 'eBPF KERNEL';
+          modeText.className = 'text-emerald-400 font-bold';
+          pipelineEbpfStatus.textContent = '[eBPF ATTACHED]';
+          pipelineEbpfStatus.className = 'font-mono text-emerald-400';
+          ebpfDetail.textContent = `Kernel Native eBPF (${caps.kernel || 'Linux'})`;
+        } else {
+          modeText.textContent = 'FALLBACK (proc)';
+          modeText.className = 'text-amber-400 font-bold';
+          pipelineEbpfStatus.textContent = '[FALLBACK POLLED]';
+          pipelineEbpfStatus.className = 'font-mono text-amber-400';
+          ebpfDetail.textContent = 'Fallback Mode (docker top / proc polling)';
+        }
+
+        // Update Charts
+        updateCharts(data);
+
+      } catch (e) {
+        console.error('fetchOverview error:', e);
+      }
+    }
+
+    // Fetch Packages List
+    async function fetchPackages() {
+      try {
+        const res = await fetch('/api/packages');
+        if (!res.ok) throw new Error('Failed to fetch packages');
+        allPackages = await res.json();
+
+        // Update counts
+        document.getElementById('totalPkgCountDisplay').textContent = allPackages.length;
+        const threats = allPackages.filter(p => p.is_malicious || ['CRITICAL', 'HIGH'].includes(p.severity));
+        const threatBadge = document.getElementById('threatBadgeCount');
+        if (threats.length > 0) {
+          threatBadge.textContent = threats.length;
+          threatBadge.classList.remove('hidden');
+        } else {
+          threatBadge.classList.add('hidden');
+        }
+
+        // Render Tables
+        renderTopThreats(threats);
+        filterPackages();
+
+      } catch (e) {
+        console.error('fetchPackages error:', e);
+      }
+    }
+
+    // Render Top Threats in Overview Tab
+    function renderTopThreats(threats) {
+      const tbody = document.getElementById('topThreatsTableBody');
+      if (!threats || threats.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" class="py-8 text-center text-emerald-400 font-medium">Zero high-priority threats or malicious implants detected! System compliant.</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = threats.slice(0, 8).map(p => {
+        const isMal = p.is_malicious;
+        const statusBadge = isMal 
+          ? `<span class="px-2 py-0.5 rounded text-[11px] font-bold font-mono bg-rose-950 text-rose-400 border border-rose-800">MALICIOUS</span>`
+          : `<span class="px-2 py-0.5 rounded text-[11px] font-bold font-mono bg-amber-950 text-amber-400 border border-amber-800">VULNERABLE</span>`;
+
+        const sevClass = p.severity === 'CRITICAL' ? 'text-rose-400' : 'text-amber-400';
+        const cves = (p.cve_ids && p.cve_ids.length > 0) ? p.cve_ids.join(', ') : 'None';
+        
+        let iocSummary = [];
+        if (p.ioc_ast && p.ioc_ast.length > 0) iocSummary.push(`${p.ioc_ast.length} AST`);
+        if (p.ioc_entropy_secrets && p.ioc_entropy_secrets.length > 0) iocSummary.push(`${p.ioc_entropy_secrets.length} Secret`);
+        if (p.ioc_wallets && p.ioc_wallets.length > 0) iocSummary.push(`${p.ioc_wallets.length} Wallet`);
+        const iocText = iocSummary.length > 0 ? iocSummary.join(' | ') : 'CVE Only';
+
+        const aiVerdict = p.ai_verdict || 'BENIGN';
+        const aiColor = aiVerdict === 'MALICIOUS' ? 'bg-rose-950 text-rose-300 border-rose-800' : (aiVerdict === 'SUSPICIOUS' ? 'bg-amber-950 text-amber-300 border-amber-800' : 'bg-emerald-950 text-emerald-300 border-emerald-800');
+
+        return `
+          <tr class="hover:bg-sentinel-850/60 transition">
+            <td class="py-3 px-4">${statusBadge}</td>
+            <td class="py-3 px-4 font-mono font-medium text-slate-200">
+              <div class="flex items-center space-x-2">
+                <span>${escapeHtml(p.package)}</span>
+                <span class="text-[10px] px-1.5 py-0.2 rounded bg-sentinel-800 text-slate-400">${escapeHtml(p.ecosystem || 'npm')}</span>
+              </div>
+            </td>
+            <td class="py-3 px-4 font-mono ${sevClass} font-bold">${p.severity} (${p.cvss_score || '0.0'})</td>
+            <td class="py-3 px-4 font-mono text-slate-300 max-w-[200px] truncate" title="${escapeHtml(cves)}">${escapeHtml(cves)}</td>
+            <td class="py-3 px-4 font-mono text-amber-300">${iocText}</td>
+            <td class="py-3 px-4">
+              <span class="px-2 py-0.5 rounded text-[10px] font-mono border ${aiColor}">${aiVerdict}</span>
+            </td>
+            <td class="py-3 px-4 text-right">
+              <button onclick="inspectPackage('${escapeHtml(p.package)}')" class="px-2.5 py-1 rounded bg-sentinel-800 hover:bg-cyan-600 hover:text-black text-cyan-400 font-semibold text-[11px] transition">
+                Inspect
+              </button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    // Filter and Render Dependencies Tab
+    let debounceTimer = null;
+    function debounceFilterPackages() {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(filterPackages, 200);
+    }
+
+    function filterPackages() {
+      const search = (document.getElementById('pkgSearchInput').value || '').toLowerCase().trim();
+      const eco = document.getElementById('ecoFilterSelect').value;
+      const sev = document.getElementById('sevFilterSelect').value;
+      const threatsOnly = document.getElementById('threatsOnlyToggle').checked;
+
+      const filtered = allPackages.filter(p => {
+        // Search
+        if (search) {
+          const nameMatch = (p.package || '').toLowerCase().includes(search);
+          const cveMatch = (p.cve_ids || []).some(c => String(c).toLowerCase().includes(search));
+          const threatMatch = (p.threat_sources || []).some(t => String(t).toLowerCase().includes(search));
+          if (!nameMatch && !cveMatch && !threatMatch) return false;
+        }
+        // Ecosystem
+        if (eco !== 'ALL' && (p.ecosystem || '').toLowerCase() !== eco.toLowerCase()) return false;
+        // Severity
+        if (sev !== 'ALL' && (p.severity || '').toUpperCase() !== sev.toUpperCase()) return false;
+        // Threats Only
+        if (threatsOnly) {
+          const isThreat = p.is_malicious || ['CRITICAL', 'HIGH', 'MEDIUM'].includes(p.severity) || (p.ioc_ast && p.ioc_ast.length > 0) || (p.ioc_entropy_secrets && p.ioc_entropy_secrets.length > 0);
+          if (!isThreat) return false;
+        }
+        return true;
+      });
+
+      document.getElementById('filteredPkgCount').textContent = filtered.length;
+      renderAllPackages(filtered);
+    }
+
+    function renderAllPackages(packages) {
+      const tbody = document.getElementById('allPackagesTableBody');
+      if (!packages || packages.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="8" class="py-8 text-center text-slate-500 font-mono">No packages matching selected filter criteria.</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = packages.map(p => {
+        let statusBadge;
+        if (p.is_malicious) {
+          statusBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-rose-950 text-rose-400 border border-rose-800">MALICIOUS</span>`;
+        } else if (['CRITICAL', 'HIGH'].includes(p.severity)) {
+          statusBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-amber-950 text-amber-400 border border-amber-800">VULNERABLE</span>`;
+        } else if (p.current_version && p.latest_version && p.current_version !== p.latest_version && p.latest_version !== 'N/A') {
+          statusBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-mono bg-blue-950 text-blue-400 border border-blue-800">OUTDATED</span>`;
+        } else {
+          statusBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-950 text-emerald-400 border border-emerald-800">CLEAN</span>`;
+        }
+
+        const sevColors = {
+          'CRITICAL': 'text-rose-400',
+          'HIGH': 'text-amber-400',
+          'MEDIUM': 'text-yellow-400',
+          'LOW': 'text-cyan-400',
+          'NONE': 'text-slate-500',
+          'Clean': 'text-emerald-500'
+        };
+        const sevColor = sevColors[p.severity] || 'text-slate-400';
+
+        const versionDiff = (p.current_version !== p.latest_version && p.latest_version && p.latest_version !== 'N/A')
+          ? `<span class="text-slate-300 font-mono">${escapeHtml(p.current_version)}</span> <span class="text-amber-400 font-mono text-[10px]">&rarr; ${escapeHtml(p.latest_version)}</span>`
+          : `<span class="text-slate-400 font-mono">${escapeHtml(p.current_version || '1.0.0')}</span>`;
+
+        const cves = (p.cve_ids && p.cve_ids.length > 0) ? p.cve_ids.join(', ') : 'None';
+
+        let iocs = [];
+        if (p.ioc_ast && p.ioc_ast.length > 0) iocs.push(`${p.ioc_ast.length} AST`);
+        if (p.ioc_entropy_secrets && p.ioc_entropy_secrets.length > 0) iocs.push(`${p.ioc_entropy_secrets.length} Secret`);
+        if (p.ioc_wallets && p.ioc_wallets.length > 0) iocs.push(`${p.ioc_wallets.length} Crypto`);
+        const iocHtml = iocs.length > 0 
+          ? `<span class="text-amber-400 font-mono">${iocs.join(', ')}</span>`
+          : `<span class="text-slate-600 font-mono">None</span>`;
+
+        const aiVerdict = p.ai_verdict || 'BENIGN';
+        const aiClass = aiVerdict === 'MALICIOUS' ? 'bg-rose-950 text-rose-300 border-rose-800' : (aiVerdict === 'SUSPICIOUS' ? 'bg-amber-950 text-amber-300 border-amber-800' : 'bg-slate-800 text-slate-400 border-slate-700');
+
+        return `
+          <tr class="hover:bg-sentinel-850/60 transition">
+            <td class="py-2.5 px-4">${statusBadge}</td>
+            <td class="py-2.5 px-4 font-mono font-medium text-slate-200">
+              <div class="flex items-center space-x-2">
+                <span>${escapeHtml(p.package)}</span>
+                <span class="text-[10px] px-1.5 py-0.2 rounded bg-sentinel-800 text-slate-400">${escapeHtml(p.ecosystem || 'npm')}</span>
+              </div>
+            </td>
+            <td class="py-2.5 px-4">${versionDiff}</td>
+            <td class="py-2.5 px-4 font-mono ${sevColor} font-bold">${p.severity || 'NONE'} (${p.cvss_score || '0.0'})</td>
+            <td class="py-2.5 px-4 font-mono text-slate-300 max-w-[180px] truncate" title="${escapeHtml(cves)}">${escapeHtml(cves)}</td>
+            <td class="py-2.5 px-4">${iocHtml}</td>
+            <td class="py-2.5 px-4">
+              <span class="px-2 py-0.5 rounded text-[10px] font-mono border ${aiClass}">${aiVerdict}</span>
+            </td>
+            <td class="py-2.5 px-4 text-right">
+              <button onclick="inspectPackage('${escapeHtml(p.package)}')" class="px-2.5 py-1 rounded bg-sentinel-800 hover:bg-cyan-600 hover:text-black text-cyan-400 font-semibold text-[11px] transition">
+                Inspect
+              </button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    // Inspect Package Modal
+    function inspectPackage(pkgName) {
+      const pkg = allPackages.find(p => p.package === pkgName);
+      if (!pkg) return;
+
+      document.getElementById('modalPkgName').textContent = pkg.package;
+      document.getElementById('modalEcoBadge').textContent = pkg.ecosystem || 'npm';
+      document.getElementById('modalSeverityBadge').textContent = `${pkg.severity || 'NONE'} (CVSS ${pkg.cvss_score || '0.0'})`;
+      document.getElementById('modalPkgVersion').textContent = `Installed: ${pkg.current_version || '1.0.0'} | Latest Registry: ${pkg.latest_version || '1.0.0'}`;
+
+      // AI Analysis
+      document.getElementById('modalAiVerdict').textContent = pkg.ai_verdict || 'BENIGN';
+      document.getElementById('modalAiSummary').textContent = pkg.ai_summary || 'Standard open-source dependency with benign static profile.';
+
+      // Static Risk Summary
+      document.getElementById('modalRiskSummary').textContent = pkg.risk_summary || 'No behavioral indicators detected in raw AST or binary patterns.';
+
+      // Threat Sources
+      const threatsList = document.getElementById('modalThreatSourcesList');
+      if (pkg.threat_sources && pkg.threat_sources.length > 0) {
+        threatsList.innerHTML = pkg.threat_sources.map(t => `<li class="text-rose-400">&bull; ${escapeHtml(t)}</li>`).join('');
+      } else {
+        threatsList.innerHTML = '<li class="text-slate-500">None detected across OSV, GHSA, or Local Blocklists.</li>';
+      }
+
+      // AST Findings
+      const astList = document.getElementById('modalAstList');
+      if (pkg.ioc_ast && pkg.ioc_ast.length > 0) {
+        astList.innerHTML = pkg.ioc_ast.map(a => `<li class="text-amber-400">&bull; ${escapeHtml(a)}</li>`).join('');
+      } else {
+        astList.innerHTML = '<li class="text-slate-500">No dangerous eval(), exec(), child_process, or hex patterns detected.</li>';
+      }
+
+      // Secrets
+      const secList = document.getElementById('modalSecretsList');
+      if (pkg.ioc_entropy_secrets && pkg.ioc_entropy_secrets.length > 0) {
+        secList.innerHTML = pkg.ioc_entropy_secrets.map(s => `<li>&bull; ${escapeHtml(s)}</li>`).join('');
+      } else {
+        secList.innerHTML = '<li class="text-slate-500">No high-entropy keys found.</li>';
+      }
+
+      // Wallets
+      const walList = document.getElementById('modalWalletsList');
+      if (pkg.ioc_wallets && pkg.ioc_wallets.length > 0) {
+        walList.innerHTML = pkg.ioc_wallets.map(w => `<li>&bull; ${escapeHtml(w)}</li>`).join('');
+      } else {
+        walList.innerHTML = '<li class="text-slate-500">No cryptocurrency addresses found.</li>';
+      }
+
+      // Network IPs & URLs
+      const netList = document.getElementById('modalNetworkList');
+      const netItems = [...(pkg.ioc_urls || []), ...(pkg.ioc_ips || [])];
+      if (netItems.length > 0) {
+        netList.innerHTML = netItems.map(n => `<li>&bull; ${escapeHtml(n)}</li>`).join('');
+      } else {
+        netList.innerHTML = '<li class="text-slate-500">No suspicious C2 IPs or exfiltration endpoints.</li>';
+      }
+
+      document.getElementById('inspectModal').classList.remove('hidden');
+    }
+
+    function closeInspectModal() {
+      document.getElementById('inspectModal').classList.add('hidden');
+    }
+
+    // Live Runtime & eBPF Telemetry
+    async function fetchTelemetry() {
+      try {
+        const res = await fetch('/api/runtime/telemetry');
+        if (!res.ok) return;
+        const data = await res.json();
+
+        // Update Socket Table
+        const socketsBody = document.getElementById('socketsTableBody');
+        const sockets = data.sockets || [];
+        if (sockets.length === 0) {
+          socketsBody.innerHTML = `<tr><td colspan="6" class="py-6 text-center text-slate-500 font-sans">No active outbound external sockets detected.</td></tr>`;
+        } else {
+          socketsBody.innerHTML = sockets.map(s => {
+            const riskClass = s.risk === 'SUSPICIOUS_PORT' ? 'text-rose-400 font-bold' : (s.risk === 'PRIVATE' ? 'text-emerald-400' : 'text-amber-400');
+            return `
+              <tr class="hover:bg-sentinel-850/60 transition">
+                <td class="py-2.5 px-4 font-bold text-cyan-400">${s.protocol || 'TCP'}</td>
+                <td class="py-2.5 px-4 text-slate-300">${escapeHtml(s.local_ip)}:${s.local_port}</td>
+                <td class="py-2.5 px-4 text-slate-200 font-bold">${escapeHtml(s.remote_ip)}:${s.remote_port}</td>
+                <td class="py-2.5 px-4 text-slate-400">${escapeHtml(s.state || 'ESTABLISHED')}</td>
+                <td class="py-2.5 px-4 ${riskClass}">${escapeHtml(s.risk || 'NORMAL')}</td>
+                <td class="py-2.5 px-4 text-purple-400">${escapeHtml(s.attributed_package || 'system')}</td>
+              </tr>
+            `;
+          }).join('');
+        }
+
+        // Update Live Alert Console
+        const consoleElem = document.getElementById('alertsConsole');
+        const alerts = data.alerts || [];
+        document.getElementById('telemetryAlertCount').textContent = `${alerts.length} Alerts Logged`;
+
+        if (alerts.length > 0) {
+          consoleElem.innerHTML = alerts.map(a => {
+            let color = 'text-slate-300';
+            if (a.includes('CRITICAL') || a.includes('EVASION') || a.includes('[!!]')) color = 'text-rose-400 font-bold';
+            else if (a.includes('HIGH') || a.includes('WARN')) color = 'text-amber-400';
+            return `<div class="${color}">${escapeHtml(a)}</div>`;
+          }).join('');
+          consoleElem.scrollTop = consoleElem.scrollHeight;
+        }
+
+      } catch (err) {
+        console.error('fetchTelemetry error:', err);
+      }
+    }
+
+    // Containers Fleet View
+    async function fetchContainers() {
+      try {
+        const res = await fetch('/api/containers');
+        if (!res.ok) return;
+        const containers = await res.json();
+        document.getElementById('containersCount').textContent = containers.length;
+
+        const grid = document.getElementById('containersGrid');
+        grid.innerHTML = containers.map(c => `
+          <div class="bg-sentinel-900 border border-sentinel-800 rounded-xl p-5 flex flex-col justify-between">
+            <div>
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-sm font-bold text-slate-200 font-mono">${escapeHtml(c.name)}</span>
+                <span class="px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-950 text-emerald-400 border border-emerald-800">${escapeHtml(c.status)}</span>
+              </div>
+              <div class="text-xs text-slate-400 space-y-1 mb-4">
+                <div><span class="text-slate-500 font-mono">Runtimes:</span> <span class="text-cyan-400 font-mono">${escapeHtml((c.runtimes || []).join(', ') || 'Auto-detected')}</span></div>
+                <div><span class="text-slate-500 font-mono">Monitoring:</span> <span class="text-slate-300">Continuous HIDS & eBPF</span></div>
+              </div>
+            </div>
+            <button onclick="triggerContainerScan('${escapeHtml(c.name)}')" class="w-full py-2 rounded-lg bg-sentinel-800 hover:bg-cyan-600 hover:text-black text-cyan-400 text-xs font-bold transition font-mono">
+              Scan This Container &rarr;
+            </button>
+          </div>
+        `).join('');
+
+      } catch (err) {
+        console.error('fetchContainers error:', err);
+      }
+    }
+
+    // Reports View
+    async function fetchReports() {
+      try {
+        const res = await fetch('/api/reports');
+        if (!res.ok) return;
+        const reports = await res.json();
+
+        const tbody = document.getElementById('reportsTableBody');
+        if (reports.length === 0) {
+          tbody.innerHTML = `<tr><td colspan="5" class="py-8 text-center text-slate-500 font-mono">No reports found in monitor/reports directory.</td></tr>`;
+          return;
+        }
+
+        tbody.innerHTML = reports.map(r => {
+          const typeColors = {
+            'XLSX': 'bg-emerald-950 text-emerald-400 border-emerald-800',
+            'SARIF': 'bg-cyan-950 text-cyan-400 border-cyan-800',
+            'JSON': 'bg-purple-950 text-purple-400 border-purple-800',
+            'LOG': 'bg-amber-950 text-amber-400 border-amber-800'
+          };
+          const badgeClass = typeColors[r.type] || 'bg-slate-800 text-slate-400 border-slate-700';
+
+          return `
+            <tr class="hover:bg-sentinel-850/60 transition">
+              <td class="py-3 px-4 font-mono text-slate-200 font-medium">${escapeHtml(r.filename)}</td>
+              <td class="py-3 px-4">
+                <span class="px-2 py-0.5 rounded text-[10px] font-mono border ${badgeClass}">${r.type}</span>
+              </td>
+              <td class="py-3 px-4 font-mono text-slate-400">${r.size_kb} KB</td>
+              <td class="py-3 px-4 font-mono text-slate-400">${escapeHtml(r.date)}</td>
+              <td class="py-3 px-4 text-right">
+                <a href="/api/reports/${encodeURIComponent(r.filename)}/download" download 
+                   class="inline-flex items-center space-x-1 px-3 py-1 rounded-lg bg-sentinel-800 hover:bg-cyan-600 hover:text-black text-cyan-400 font-semibold text-xs transition">
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                  <span>Download</span>
+                </a>
+              </td>
+            </tr>
+          `;
+        }).join('');
+
+      } catch (err) {
+        console.error('fetchReports error:', err);
+      }
+    }
+
+    // Modal Operations: Scan
+    function openScanModal(targetName) {
+      if (targetName) document.getElementById('scanTargetInput').value = targetName;
+      document.getElementById('scanConsoleWrapper').classList.add('hidden');
+      document.getElementById('startScanBtn').disabled = false;
+      document.getElementById('scanModal').classList.remove('hidden');
+    }
+
+    function triggerContainerScan(containerName) {
+      openScanModal(containerName);
+    }
+
+    function closeScanModal() {
+      if (scanJobPollingInterval) clearInterval(scanJobPollingInterval);
+      document.getElementById('scanModal').classList.add('hidden');
+    }
+
+    async function executeScan() {
+      const target = document.getElementById('scanTargetInput').value.trim();
+      const includeOs = document.getElementById('scanIncludeOsCheckbox').checked;
+      const startBtn = document.getElementById('startScanBtn');
+      const consoleWrapper = document.getElementById('scanConsoleWrapper');
+      const scanConsole = document.getElementById('scanConsole');
+      const statusIndicator = document.getElementById('scanStatusIndicator');
+
+      startBtn.disabled = true;
+      consoleWrapper.classList.remove('hidden');
+      scanConsole.innerHTML = `<div>[${new Date().toLocaleTimeString()}] Submitting background audit job for target: <strong>${escapeHtml(target)}</strong>...</div>`;
+      statusIndicator.textContent = 'QUEUED...';
+
+      try {
+        const res = await fetch(`/api/scan?target=${encodeURIComponent(target)}&include_os=${includeOs}`, { method: 'POST' });
+        if (!res.ok) throw new Error('Scan trigger failed');
+        const data = await res.json();
+        const jobId = data.job_id;
+
+        // Poll job status every 1.5s
+        scanJobPollingInterval = setInterval(async () => {
+          try {
+            const pollRes = await fetch(`/api/scan/${jobId}/status`);
+            if (!pollRes.ok) return;
+            const job = await pollRes.json();
+
+            statusIndicator.textContent = job.status.toUpperCase();
+            if (job.logs && job.logs.length > 0) {
+              scanConsole.innerHTML = job.logs.map(l => `<div>${escapeHtml(l)}</div>`).join('');
+              scanConsole.scrollTop = scanConsole.scrollHeight;
+            }
+
+            if (job.status === 'completed' || job.status === 'completed_with_warnings' || job.status === 'failed') {
+              clearInterval(scanJobPollingInterval);
+              startBtn.disabled = false;
+              statusIndicator.className = job.status === 'failed' ? 'text-rose-400 font-bold' : 'text-emerald-400 font-bold';
+              refreshDashboard();
+            }
+          } catch (e) {
+            console.error('Job polling error:', e);
+          }
+        }, 1500);
+
+      } catch (err) {
+        scanConsole.innerHTML += `<div class="text-rose-400">[ERROR] Failed to start audit: ${escapeHtml(err.message)}</div>`;
+        startBtn.disabled = false;
+      }
+    }
+
+    // Modal Operations: Upload SBOM / SARIF
+    function openUploadModal() {
+      selectedUploadFile = null;
+      document.getElementById('selectedFileName').textContent = 'Click to select .json or .sarif file';
+      document.getElementById('uploadBtn').disabled = true;
+      document.getElementById('uploadFeedback').classList.add('hidden');
+      document.getElementById('uploadModal').classList.remove('hidden');
+    }
+
+    function closeUploadModal() {
+      document.getElementById('uploadModal').classList.add('hidden');
+    }
+
+    function handleFileSelected(event) {
+      const file = event.target.files[0];
+      if (file) {
+        selectedUploadFile = file;
+        document.getElementById('selectedFileName').textContent = `${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
+        document.getElementById('uploadBtn').disabled = false;
+      }
+    }
+
+    async function submitUpload() {
+      if (!selectedUploadFile) return;
+      const uploadBtn = document.getElementById('uploadBtn');
+      const feedback = document.getElementById('uploadFeedback');
+      uploadBtn.disabled = true;
+      feedback.className = 'p-3 rounded-lg text-xs font-mono bg-cyan-950 text-cyan-300 border border-cyan-800';
+      feedback.textContent = 'Uploading and parsing document...';
+      feedback.classList.remove('hidden');
+
+      const formData = new FormData();
+      formData.append('file', selectedUploadFile);
+
+      try {
+        const res = await fetch('/api/upload-sbom', { method: 'POST', body: formData });
+        const data = await res.json();
+        if (res.ok) {
+          feedback.className = 'p-3 rounded-lg text-xs font-mono bg-emerald-950 text-emerald-300 border border-emerald-800';
+          feedback.textContent = `[SUCCESS] Ingested ${data.format || 'SBOM'} successfully. Refreshing view...`;
+          setTimeout(() => {
+            closeUploadModal();
+            refreshDashboard();
+          }, 1200);
+        } else {
+          feedback.className = 'p-3 rounded-lg text-xs font-mono bg-rose-950 text-rose-300 border border-rose-800';
+          feedback.textContent = `[ERROR] ${data.error || 'Upload failed'}`;
+          uploadBtn.disabled = false;
+        }
+      } catch (err) {
+        feedback.className = 'p-3 rounded-lg text-xs font-mono bg-rose-950 text-rose-300 border border-rose-800';
+        feedback.textContent = `[ERROR] Network error: ${err.message}`;
+        uploadBtn.disabled = false;
+      }
+    }
+
+    // Chart.js Visualizations
+    function initCharts() {
+      // 1. Severity Doughnut Chart
+      const sevCtx = document.getElementById('severityChart').getContext('2d');
+      severityChartInstance = new Chart(sevCtx, {
+        type: 'doughnut',
+        data: {
+          labels: ['Critical', 'High', 'Medium', 'Low', 'Clean'],
+          datasets: [{
+            data: [1, 1, 1, 1, 2],
+            backgroundColor: [
+              '#F43F5E', // Rose
+              '#F59E0B', // Amber
+              '#EAB308', // Yellow
+              '#06B6D4', // Cyan
+              '#10B981'  // Emerald
+            ],
+            borderColor: '#0B1120',
+            borderWidth: 3,
+            hoverOffset: 6
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              position: 'bottom',
+              labels: { color: '#94A3B8', font: { family: 'JetBrains Mono', size: 10 }, boxWidth: 12, padding: 10 }
+            }
+          },
+          cutout: '72%'
+        }
+      });
+
+      // 2. Ecosystem Bar Chart
+      const ecoCtx = document.getElementById('ecosystemChart').getContext('2d');
+      ecosystemChartInstance = new Chart(ecoCtx, {
+        type: 'bar',
+        data: {
+          labels: ['npm', 'PyPI', 'Go', 'RubyGems'],
+          datasets: [{
+            label: 'Packages',
+            data: [4, 2, 0, 0],
+            backgroundColor: '#06B6D4',
+            borderRadius: 6,
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            x: {
+              grid: { display: false },
+              ticks: { color: '#94A3B8', font: { family: 'JetBrains Mono', size: 10 } }
+            },
+            y: {
+              beginAtZero: true,
+              grid: { color: '#1E293B' },
+              ticks: { color: '#94A3B8', font: { family: 'JetBrains Mono', size: 10 }, precision: 0 }
+            }
+          },
+          plugins: {
+            legend: { display: false }
+          }
+        }
+      });
+    }
+
+    function updateCharts(data) {
+      if (severityChartInstance) {
+        severityChartInstance.data.datasets[0].data = [
+          data.critical_count || 0,
+          data.high_count || 0,
+          data.medium_count || 0,
+          data.low_count || 0,
+          data.clean_count || 0
+        ];
+        severityChartInstance.update();
+      }
+
+      if (ecosystemChartInstance && data.ecosystem_distribution) {
+        const labels = Object.keys(data.ecosystem_distribution);
+        const counts = Object.values(data.ecosystem_distribution);
+        ecosystemChartInstance.data.labels = labels.length > 0 ? labels : ['npm'];
+        ecosystemChartInstance.data.datasets[0].data = counts.length > 0 ? counts : [0];
+        ecosystemChartInstance.update();
+      }
+    }
+
+    // HTML Escaper utility
+    function escapeHtml(text) {
+      if (!text) return '';
+      return String(text)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+  </script>
+</body>
+</html>

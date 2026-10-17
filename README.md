@@ -206,23 +206,34 @@ docker run -d --name nexus-studio-app -p 3000:3000 nexus-studio-app
 # Full static analysis pipeline (Stages 1-6)
 python monitor.py --container nexus-studio-app
 
+# Audit container and automatically launch the Web SOC Dashboard
+python monitor.py --container nexus-studio-app --dashboard
+
+# Launch the Centralized Web SOC Dashboard standalone
+python dashboard/server.py --port 8080
+
 # Full pipeline + live runtime monitoring (Stages 1-8)
 python monitor.py --container nexus-studio-app --watch --net-monitor
+
+# Run with Linux Kernel eBPF monitoring (kprobe hooks)
+python monitor.py --container nexus-studio-app --watch --ebpf --ebpf-duration 60
 
 # Scan ALL running containers
 python monitor.py --container all --watch
 
-# Use a pre-generated SBOM file
-python monitor.py --skip-sbom --sbom-file existing_sbom.json
+# Use a pre-generated SBOM file and export OASIS SARIF 2.1.0
+python monitor.py --skip-sbom --sbom-file existing_sbom.json --sarif ./reports/results.sarif
 ```
 
 ### Output Locations
 
 | Output | Location |
 |:-------|:---------|
-| Terminal Dashboard | Rich color-coded terminal output |
-| Excel Report | `reports/<container>/supply_chain_audit_YYYYMMDD_HHMMSS.xlsx` |
-| Runtime Alerts | `monitor/runtime_alerts.log` |
+| **Web SOC Dashboard** | Interactive UI at `http://localhost:8080` (FastAPI + Tailwind + Chart.js) |
+| **SARIF 2.1.0 Alert Record** | `reports/results.sarif` (Ingested directly by GitHub Code Scanning) |
+| **Excel Audit Report** | `reports/<container>/supply_chain_audit_YYYYMMDD_HHMMSS.xlsx` |
+| **Runtime & eBPF Alerts** | `monitor/runtime_alerts.log` & `runtime_alerts_ebpf.log` |
+| **Terminal Dashboard** | Color-coded Rich terminal console summary |
 
 ---
 
@@ -252,6 +263,9 @@ Detailed architecture documentation is organized into focused design documents i
 | [`03-threat-intelligence.md`](docs/03-threat-intelligence.md) | Multi-database threat intel and typo-squatting |
 | [`04-static-analysis-and-ai.md`](docs/04-static-analysis-and-ai.md) | AST scanning, entropy analysis, Gemini integration |
 | [`05-runtime-monitoring.md`](docs/05-runtime-monitoring.md) | Container HIDS and network evasion engine |
+| [`06-cicd-integration.md`](docs/06-cicd-integration.md) | Reusable GitHub Actions CI/CD & SARIF PR Gate |
+| [`07-ebpf-monitoring.md`](docs/07-ebpf-monitoring.md) | Linux kernel eBPF kprobe tracing & sidecar agent |
+| [`08-web-dashboard.md`](docs/08-web-dashboard.md) | Centralized Web SOC Dashboard & REST API |
 
 ### System Architecture
 
@@ -304,12 +318,28 @@ graph TB
 
 ```
 supply-chain-sentinel/
+|-- .github/                        # GitHub Actions CI/CD & Issue Templates
+|   |-- workflows/
+|   |   |-- supply-chain-sentinel.yml   #   Reusable CI workflow & SARIF gate
+|   |   |-- sentinel-reusable.yml       #   Caller workflow interface
+|-- action.yml                      # Composite GitHub Action
 |-- docs/                           # Architecture documentation
 |   |-- 01-system-overview.md
 |   |-- 02-sbom-and-vulnerability.md
 |   |-- 03-threat-intelligence.md
 |   |-- 04-static-analysis-and-ai.md
 |   |-- 05-runtime-monitoring.md
+|   |-- 06-cicd-integration.md
+|   |-- 07-ebpf-monitoring.md
+|   |-- 08-web-dashboard.md
+|-- dashboard/                      # Centralized Web SOC Dashboard
+|   |-- server.py                   #   FastAPI backend & REST API
+|   |-- static/
+|       |-- index.html              #   Tailwind CSS + Chart.js SPA
+|-- sentinel-agent/                 # eBPF Linux Kernel Sidecar Agent
+|   |-- Dockerfile                  #   Privileged BCC probe container
+|   |-- agent.py                    #   FastAPI SSE & REST event server
+|   |-- probe_programs/             #   C kprobe programs (exec, net, file)
 |-- demo-apps/                      # Target test applications
 |   |-- nexus-studio/               #   Node.js microservice with demo deps
 |       |-- preload.cjs             #   Memory hooking instrumentation engine
@@ -341,6 +371,9 @@ supply-chain-sentinel/
 |       |-- ai_analyzer.py          #   Gemini AI intent analysis
 |       |-- runtime_scanner.py      #   Container runtime package extractor
 |       |-- runtime_network.py      #   Network parser + 5-layer evasion
+|       |-- sarif_exporter.py       #   OASIS SARIF 2.1.0 generator
+|       |-- ebpf_monitor.py         #   eBPF kprobe monitor & fallback
+|       |-- ebpf_client.py          #   eBPF agent HTTP REST client
 |       |-- ecosystem_registry.py   #   Multi-ecosystem registry definitions
 |       |-- malware_retriever.py    #   Malware sample retrieval
 |       |-- report.py               #   Excel report + terminal summary

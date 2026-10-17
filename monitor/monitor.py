@@ -187,6 +187,22 @@ Examples:
         action="store_true",
         help="Disable SARIF output entirely",
     )
+    parser.add_argument(
+        "--dashboard",
+        action="store_true",
+        help="Launch the centralized web SOC security dashboard on port 8080 (or --dashboard-port)",
+    )
+    parser.add_argument(
+        "--dashboard-port",
+        type=int,
+        default=8080,
+        help="Port for web dashboard (default: 8080)",
+    )
+    parser.add_argument(
+        "--dashboard-only",
+        action="store_true",
+        help="Start the web dashboard immediately without running a pre-scan",
+    )
     return parser.parse_args()
 
 
@@ -449,6 +465,20 @@ def run_phase1(
             display_executive_summary(exec_summary)
     except Exception as e:
         console.print(f"  [dim yellow]AI analysis skipped: {e}[/]")
+
+    # Save latest audit state for Web SOC Dashboard
+    try:
+        latest_audit_path = os.path.join(report_dir, "latest_audit.json")
+        with open(latest_audit_path, "w", encoding="utf-8") as fh:
+            json.dump({
+                "target": image_name,
+                "timestamp": datetime.now().isoformat(),
+                "packages_scanned": len(packages),
+                "audit_data": audit_data,
+            }, fh, indent=2)
+        console.print(f"  [bold green][OK][/] Saved latest audit data to: {latest_audit_path}")
+    except Exception as e:
+        console.print(f"  [dim yellow][!] Could not save latest_audit.json: {e}[/]")
 
     return audit_data, report_path
 
@@ -790,6 +820,17 @@ def main():
     if not os.path.isabs(report_dir):
         report_dir = os.path.join(script_dir, report_dir)
 
+    # Launch dashboard directly if --dashboard-only requested
+    if getattr(args, "dashboard_only", False):
+        try:
+            sys.path.insert(0, os.path.dirname(script_dir))
+            from dashboard.server import start_dashboard
+            start_dashboard(port=args.dashboard_port)
+            return
+        except Exception as e:
+            console.print(f"[bold red]  [X] Failed to launch dashboard: {e}[/]")
+            sys.exit(1)
+
     include_os = args.include_os
     net_monitor = args.net_monitor
 
@@ -974,6 +1015,19 @@ def main():
             container_report_dir = os.path.join(report_dir, c_name)
             generate_excel_report(audit_data, container_report_dir)
 
+            # Save latest audit state for Web SOC Dashboard
+            try:
+                latest_audit_path = os.path.join(report_dir, "latest_audit.json")
+                with open(latest_audit_path, "w", encoding="utf-8") as fh:
+                    json.dump({
+                        "target": c_name,
+                        "timestamp": datetime.now().isoformat(),
+                        "packages_scanned": len(packages),
+                        "audit_data": audit_data,
+                    }, fh, indent=2)
+            except Exception:
+                pass
+
     else:
         run_phase1(
             image_name=args.image,
@@ -984,6 +1038,15 @@ def main():
             sarif_path=args.sarif,
             no_sarif=args.no_sarif,
         )
+
+    # Launch dashboard if --dashboard was passed
+    if getattr(args, "dashboard", False):
+        try:
+            sys.path.insert(0, os.path.dirname(script_dir))
+            from dashboard.server import start_dashboard
+            start_dashboard(port=args.dashboard_port)
+        except Exception as e:
+            console.print(f"[bold red]  [X] Failed to launch dashboard: {e}[/]")
 
 
 if __name__ == "__main__":
